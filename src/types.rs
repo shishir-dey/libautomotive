@@ -83,12 +83,12 @@ pub trait Config: Send + Sync {
 pub trait Port: Send + Sync {
     /// Sends a frame through the CAN interface.
     fn send(&mut self, frame: &Frame) -> crate::error::Result<()>;
-    
+
     /// Receives a frame from the CAN interface.
     ///
     /// This method will block until a frame is received or a timeout occurs.
     fn receive(&mut self) -> crate::error::Result<Frame>;
-    
+
     /// Sets the timeout for receive operations.
     ///
     /// # Parameters

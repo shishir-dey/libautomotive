@@ -1,5 +1,5 @@
 //! # libautomotive
-//! 
+//!
 //! `libautomotive` is a comprehensive Rust library for automotive protocol implementations,
 //! following the OSI layer model for clear separation of concerns. It provides support for
 //! various automotive protocols including CAN, CAN-FD, ISO-TP, J1939, UDS, and OBD-II.
@@ -26,9 +26,23 @@
 //!
 //! ```rust,no_run
 //! use libautomotive::{can, j1939, uds};
-//! 
+//!
 //! // Your implementation code here
 //! ```
+//!
+//! ## Credits and Acknowledgments
+//!
+//! This library draws inspiration from and acknowledges the following open-source projects:
+//!
+//! - [esp32-isotp-ble-bridge](https://github.com/bri3d/esp32-isotp-ble-bridge) - ESP32-IDF based BLE<->ISO-TP bridge
+//! - [Open-SAE-J1939](https://github.com/DanielMartensson/Open-SAE-J1939) - Open source SAE J1939 implementation
+//! - [uds-c](https://github.com/openxc/uds-c) - Unified Diagnostic Services (UDS) C library
+//! - [obdii](https://github.com/ejvaughan/obdii) - OBD-II diagnostic protocol implementation
+//! - [canis-can-sdk](https://github.com/kentindell/canis-can-sdk) - CAN protocol stack implementation
+//!
+//! These projects have provided valuable insights and reference implementations for various
+//! automotive protocols. We are grateful to their authors and contributors for making their
+//! work available to the community.
 
 // OSI Layer modules
 /// Application layer protocols including UDS and OBD-II
