@@ -1,0 +1,36 @@
+name: Publish docs
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+
+    - name: Generate docs
+      run: cargo doc --no-deps
+
+    - name: Prepare docs for deployment
+      run: |
+        mkdir docs
+        cp -r target/doc/* docs/
+        cd docs
+        echo '<meta http-equiv="refresh" content="0; url=libautomotive/index.html">' > index.html
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs
+        publish_branch: gh-pages
+        force_orphan: true 
