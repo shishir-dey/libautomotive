@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# Run cargo fmt to format code
+echo "Running cargo fmt..."
+cargo fmt
+
+exit 0
