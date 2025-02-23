@@ -28,13 +28,13 @@
 pub mod can;
 pub mod canfd;
 
-#[cfg(test)]
-pub(crate) mod mock;
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;
 
-use crate::error::Result;
+use crate::error::{AutomotiveError, Result};
 use crate::types::{Config, Frame};
 
-/// Physical layer trait that must be implemented by CAN and CANFD
+/// Physical layer trait that must be implemented by hardware interfaces
 pub trait PhysicalLayer: Send + Sync {
     type Config: Config;
 

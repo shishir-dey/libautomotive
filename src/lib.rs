@@ -16,11 +16,11 @@
 //!
 //! ## Features
 //!
-//! - 🚗 Complete automotive protocol stack
-//! - 🔧 Modular and extensible design
-//! - ⚡ High-performance implementations
-//! - 🛡️ Strong type safety and error handling
-//! - 📦 Easy-to-use abstractions
+//! - Complete automotive protocol stack
+//! - Modular and extensible design
+//! - High-performance implementations
+//! - Strong type safety and error handling
+//! - Easy-to-use abstractions
 //!
 //! ## Example
 //!

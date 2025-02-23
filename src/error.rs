@@ -5,6 +5,7 @@
 
 use std::error::Error;
 use std::fmt;
+use std::io;
 
 /// Represents all possible errors that can occur in the automotive protocol stack.
 ///
@@ -28,6 +29,15 @@ pub enum AutomotiveError {
     /// Errors specific to OBD-II operations
     ObdError(String),
 
+    /// Errors specific to DoIP operations
+    DoIPError(String),
+    /// Connection failed in DoIP
+    ConnectionFailed,
+    /// Failed to send data in DoIP
+    SendFailed,
+    /// Failed to receive data in DoIP
+    ReceiveFailed,
+
     /// Operation timed out
     Timeout,
     /// Buffer capacity exceeded
@@ -38,6 +48,17 @@ pub enum AutomotiveError {
     NotInitialized,
     /// Error related to hardware port operations
     PortError(String),
+
+    /// Invalid data received
+    InvalidData,
+    /// Invalid checksum
+    InvalidChecksum,
+
+    /// I/O error
+    IoError(io::Error),
+
+    /// Checksum error
+    ChecksumError,
 }
 
 impl fmt::Display for AutomotiveError {
@@ -49,18 +70,37 @@ impl fmt::Display for AutomotiveError {
             AutomotiveError::J1939Error(msg) => write!(f, "J1939 error: {}", msg),
             AutomotiveError::UdsError(msg) => write!(f, "UDS error: {}", msg),
             AutomotiveError::ObdError(msg) => write!(f, "OBD error: {}", msg),
+            AutomotiveError::DoIPError(msg) => write!(f, "DoIP error: {}", msg),
+            AutomotiveError::ConnectionFailed => write!(f, "DoIP connection failed"),
+            AutomotiveError::SendFailed => write!(f, "DoIP send failed"),
+            AutomotiveError::ReceiveFailed => write!(f, "DoIP receive failed"),
             AutomotiveError::Timeout => write!(f, "Operation timed out"),
             AutomotiveError::BufferOverflow => write!(f, "Buffer overflow"),
             AutomotiveError::InvalidParameter => write!(f, "Invalid parameter"),
             AutomotiveError::NotInitialized => write!(f, "Component not initialized"),
             AutomotiveError::PortError(msg) => write!(f, "Port error: {}", msg),
+            AutomotiveError::InvalidData => write!(f, "Invalid data received"),
+            AutomotiveError::InvalidChecksum => write!(f, "Invalid checksum"),
+            AutomotiveError::IoError(err) => write!(f, "I/O error: {}", err),
+            AutomotiveError::ChecksumError => write!(f, "Checksum error"),
         }
     }
 }
 
-impl Error for AutomotiveError {}
+impl Error for AutomotiveError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            AutomotiveError::IoError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
-/// A specialized Result type for automotive operations.
-///
-/// This type is used throughout the crate for any operation that can produce an error.
+impl From<io::Error> for AutomotiveError {
+    fn from(err: io::Error) -> Self {
+        AutomotiveError::IoError(err)
+    }
+}
+
+/// Result type alias for automotive operations
 pub type Result<T> = std::result::Result<T, AutomotiveError>;

@@ -40,8 +40,11 @@ pub mod uds;
 use crate::error::Result;
 use crate::types::Config;
 
+pub use obdii::Obd;
+pub use uds::Uds;
+
 /// Application layer trait that must be implemented by UDS and OBD-II
-pub trait ApplicationLayer: Send + Sync {
+pub trait ApplicationLayer {
     type Config: Config;
     type Request;
     type Response;

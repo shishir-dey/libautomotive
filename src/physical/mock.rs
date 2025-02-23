@@ -1,6 +1,8 @@
 use super::PhysicalLayer;
 use crate::error::{AutomotiveError, Result};
 use crate::types::{Config, Frame};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Mock frame handler function type
 pub type MockFrameHandler = Box<dyn Fn(&Frame) -> Result<Frame> + Send + Sync>;
@@ -21,6 +23,7 @@ pub struct MockPhysical {
     config: MockConfig,
     frame_handler: Option<MockFrameHandler>,
     is_open: bool,
+    last_frame: Arc<Mutex<Option<Frame>>>,
 }
 
 impl MockPhysical {
@@ -30,6 +33,7 @@ impl MockPhysical {
             config: MockConfig::default(),
             frame_handler,
             is_open: false,
+            last_frame: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -59,6 +63,7 @@ impl PhysicalLayer for MockPhysical {
             config,
             frame_handler: None,
             is_open: false,
+            last_frame: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -76,6 +81,11 @@ impl PhysicalLayer for MockPhysical {
         if !self.is_open {
             return Err(AutomotiveError::NotInitialized);
         }
+
+        // Store the frame for receive_frame to use
+        if let Ok(mut last_frame) = self.last_frame.lock() {
+            *last_frame = Some(frame.clone());
+        }
         Ok(())
     }
 
@@ -85,13 +95,30 @@ impl PhysicalLayer for MockPhysical {
         }
 
         if let Some(handler) = &self.frame_handler {
-            handler(&Frame::default())
-        } else {
-            Err(AutomotiveError::NotInitialized)
+            let last_frame = self.last_frame.lock().unwrap();
+            if let Some(frame) = last_frame.as_ref() {
+                // Create a response frame based on the last sent frame
+                let response = handler(frame)?;
+                return Ok(response);
+            }
+
+            // If no frame was sent, create a default single frame response
+            let default_frame = Frame {
+                id: 0x7E8,
+                data: vec![0x00, 0x00], // Single frame with 0 length
+                timestamp: 0,
+                is_extended: false,
+                is_fd: false,
+            };
+            return handler(&default_frame);
         }
+        Err(AutomotiveError::NotInitialized)
     }
 
     fn set_timeout(&mut self, timeout_ms: u32) -> Result<()> {
+        if !self.is_open {
+            return Err(AutomotiveError::NotInitialized);
+        }
         self.config.timeout_ms = timeout_ms;
         Ok(())
     }

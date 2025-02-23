@@ -1,7 +1,7 @@
 use super::ApplicationLayer;
 use crate::error::{AutomotiveError, Result};
 use crate::transport::TransportLayer;
-use crate::types::Config;
+use crate::types::{Config, Frame};
 
 // OBD-II Service IDs
 pub const SID_SHOW_CURRENT_DATA: u8 = 0x01;
@@ -56,18 +56,16 @@ pub const PID_ACC_PEDAL_POS_F: u8 = 0x4B;
 /// OBD-II Request Message
 #[derive(Debug, Clone)]
 pub struct ObdRequest {
-    pub service_id: u8,
-    pub parameter_id: u8,
-    pub data: Vec<u8>,
+    pub mode: u8,
+    pub pid: u8,
 }
 
 /// OBD-II Response Message
 #[derive(Debug, Clone)]
 pub struct ObdResponse {
-    pub service_id: u8,
-    pub parameter_id: u8,
+    pub mode: u8,
+    pub pid: u8,
     pub data: Vec<u8>,
-    pub timestamp: u64,
 }
 
 /// OBD-II Configuration
@@ -77,21 +75,18 @@ pub struct ObdConfig {
     pub auto_format: bool,
 }
 
+impl Config for ObdConfig {
+    fn validate(&self) -> Result<()> {
+        Ok(())
+    }
+}
+
 impl Default for ObdConfig {
     fn default() -> Self {
         Self {
             timeout_ms: 1000,
             auto_format: true,
         }
-    }
-}
-
-impl Config for ObdConfig {
-    fn validate(&self) -> Result<()> {
-        if self.timeout_ms == 0 {
-            return Err(AutomotiveError::InvalidParameter);
-        }
-        Ok(())
     }
 }
 
@@ -317,9 +312,8 @@ impl<T: TransportLayer> Obd<T> {
     /// Reads current sensor data
     pub fn read_sensor(&mut self, pid: u8) -> Result<Vec<u8>> {
         let request = ObdRequest {
-            service_id: SID_SHOW_CURRENT_DATA,
-            parameter_id: pid,
-            data: vec![],
+            mode: SID_SHOW_CURRENT_DATA,
+            pid,
         };
 
         let response = self.send_request(&request)?;
@@ -327,11 +321,10 @@ impl<T: TransportLayer> Obd<T> {
     }
 
     /// Reads freeze frame data
-    pub fn read_freeze_frame(&mut self, pid: u8, frame: u8) -> Result<Vec<u8>> {
+    pub fn read_freeze_frame(&mut self, pid: u8, _frame: u8) -> Result<Vec<u8>> {
         let request = ObdRequest {
-            service_id: SID_SHOW_FREEZE_FRAME,
-            parameter_id: pid,
-            data: vec![frame],
+            mode: SID_SHOW_FREEZE_FRAME,
+            pid,
         };
 
         let response = self.send_request(&request)?;
@@ -341,9 +334,8 @@ impl<T: TransportLayer> Obd<T> {
     /// Reads stored DTCs
     pub fn read_dtc(&mut self) -> Result<Vec<String>> {
         let request = ObdRequest {
-            service_id: SID_SHOW_STORED_DTC,
-            parameter_id: 0,
-            data: vec![],
+            mode: SID_SHOW_STORED_DTC,
+            pid: 0,
         };
 
         let response = self.send_request(&request)?;
@@ -378,9 +370,8 @@ impl<T: TransportLayer> Obd<T> {
     /// Clears stored DTCs
     pub fn clear_dtc(&mut self) -> Result<()> {
         let request = ObdRequest {
-            service_id: SID_CLEAR_DTC,
-            parameter_id: 0,
-            data: vec![],
+            mode: SID_CLEAR_DTC,
+            pid: 0,
         };
 
         self.send_request(&request)?;
@@ -390,9 +381,8 @@ impl<T: TransportLayer> Obd<T> {
     /// Reads vehicle information
     pub fn read_vehicle_info(&mut self, pid: u8) -> Result<Vec<u8>> {
         let request = ObdRequest {
-            service_id: SID_REQUEST_VEHICLE_INFO,
-            parameter_id: pid,
-            data: vec![],
+            mode: SID_REQUEST_VEHICLE_INFO,
+            pid,
         };
 
         let response = self.send_request(&request)?;
@@ -435,9 +425,8 @@ impl<T: TransportLayer> Obd<T> {
     /// Reads Mode 6 test results
     pub fn read_test_results(&mut self, tid: u8) -> Result<Vec<u8>> {
         let request = ObdRequest {
-            service_id: SID_TEST_RESULTS,
-            parameter_id: tid,
-            data: vec![],
+            mode: SID_TEST_RESULTS,
+            pid: tid,
         };
 
         let response = self.send_request(&request)?;
@@ -447,9 +436,8 @@ impl<T: TransportLayer> Obd<T> {
     /// Reads Mode 8 control operation results
     pub fn read_control_operation(&mut self, tid: u8) -> Result<Vec<u8>> {
         let request = ObdRequest {
-            service_id: SID_CONTROL_OPERATIONS,
-            parameter_id: tid,
-            data: vec![],
+            mode: SID_CONTROL_OPERATIONS,
+            pid: tid,
         };
 
         let response = self.send_request(&request)?;
@@ -459,9 +447,8 @@ impl<T: TransportLayer> Obd<T> {
     /// Reads permanent DTCs (Mode 0x0A)
     pub fn read_permanent_dtc(&mut self) -> Result<Vec<String>> {
         let request = ObdRequest {
-            service_id: SID_PERMANENT_DTC,
-            parameter_id: 0,
-            data: vec![],
+            mode: SID_PERMANENT_DTC,
+            pid: 0,
         };
 
         let response = self.send_request(&request)?;
@@ -500,26 +487,19 @@ impl<T: TransportLayer> ApplicationLayer for Obd<T> {
     type Response = ObdResponse;
 
     fn new(_config: Self::Config) -> Result<Self> {
-        Err(AutomotiveError::NotInitialized)
+        Err(AutomotiveError::NotInitialized) // Requires transport layer
     }
 
     fn open(&mut self) -> Result<()> {
         if self.is_open {
             return Ok(());
         }
-
-        self.config.validate()?;
         self.transport.open()?;
         self.is_open = true;
         Ok(())
     }
 
     fn close(&mut self) -> Result<()> {
-        if !self.is_open {
-            return Ok(());
-        }
-
-        self.transport.close()?;
         self.is_open = false;
         Ok(())
     }
@@ -528,42 +508,22 @@ impl<T: TransportLayer> ApplicationLayer for Obd<T> {
         if !self.is_open {
             return Err(AutomotiveError::NotInitialized);
         }
-
-        // Build request data
-        let mut data = vec![request.service_id, request.parameter_id];
-        data.extend_from_slice(&request.data);
-
-        // Send request
-        self.transport.send(&data)?;
-
-        // Receive response
-        let response_data = self.transport.receive()?;
-
-        if response_data.len() < 2 {
-            return Err(AutomotiveError::UdsError("Response too short".into()));
-        }
-
-        // Parse response
-        let response_sid = response_data[0];
-        let response_pid = response_data[1];
-
-        if response_sid != request.service_id + 0x40 {
-            return Err(AutomotiveError::UdsError(
-                "Invalid response service ID".into(),
-            ));
-        }
-
-        if response_pid != request.parameter_id {
-            return Err(AutomotiveError::UdsError(
-                "Invalid response parameter ID".into(),
-            ));
-        }
-
-        Ok(ObdResponse {
-            service_id: request.service_id,
-            parameter_id: request.parameter_id,
-            data: response_data[2..].to_vec(),
+        let data = vec![request.mode, request.pid];
+        self.transport.write_frame(&Frame {
+            id: 0,
+            data,
             timestamp: 0,
+            is_extended: false,
+            is_fd: false,
+        })?;
+        let response = self.transport.read_frame()?;
+        if response.data.len() < 2 {
+            return Err(AutomotiveError::InvalidParameter);
+        }
+        Ok(ObdResponse {
+            mode: response.data[0],
+            pid: response.data[1],
+            data: response.data[2..].to_vec(),
         })
     }
 
@@ -571,7 +531,6 @@ impl<T: TransportLayer> ApplicationLayer for Obd<T> {
         if !self.is_open {
             return Err(AutomotiveError::NotInitialized);
         }
-
         self.transport.set_timeout(timeout_ms)
     }
 }

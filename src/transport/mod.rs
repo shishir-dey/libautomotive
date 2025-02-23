@@ -28,13 +28,17 @@
 //! interface.send(&data);
 //! ```
 
+pub mod doip;
+mod isobus;
+mod isobus_diagnostic;
 pub mod isotp;
+pub mod lin;
 
 use crate::error::Result;
-use crate::types::Config;
+use crate::types::{Config, Frame};
 
-/// Transport layer trait that must be implemented by ISO-TP
-pub trait TransportLayer: Send + Sync {
+/// Base transport layer trait
+pub trait TransportLayer {
     type Config: Config;
 
     fn new(config: Self::Config) -> Result<Self>
@@ -42,10 +46,22 @@ pub trait TransportLayer: Send + Sync {
         Self: Sized;
     fn open(&mut self) -> Result<()>;
     fn close(&mut self) -> Result<()>;
-    fn send(&mut self, data: &[u8]) -> Result<()>;
-    fn receive(&mut self) -> Result<Vec<u8>>;
+    fn write_frame(&mut self, frame: &Frame) -> Result<()>;
+    fn read_frame(&mut self) -> Result<Frame>;
     fn set_timeout(&mut self, timeout_ms: u32) -> Result<()>;
 }
+
+/// ISO-TP specific transport layer trait
+pub trait IsoTpTransport: TransportLayer {
+    fn send(&mut self, data: &[u8]) -> Result<()>;
+    fn receive(&mut self) -> Result<Vec<u8>>;
+}
+
+pub use doip::{DoIP, DoIPConfig};
+pub use isobus::{ISOBUSConfig, ISOBUS};
+pub use isobus_diagnostic::{DiagnosticTroubleCode, ISOBUSDiagnosticProtocol, LampStatus};
+pub use isotp::{IsoTp, IsoTpConfig};
+pub use lin::{Lin, LinConfig, LinFrameSlot, LinFrameType};
 
 #[cfg(test)]
 mod tests;

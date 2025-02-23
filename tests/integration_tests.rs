@@ -1,3 +1,5 @@
+#![cfg(feature = "mock")]
+
 use libautomotive::application::{
     obdii::{Obd, ObdConfig, PidData, PID_ENGINE_RPM},
     uds::{
@@ -7,15 +9,18 @@ use libautomotive::application::{
     ApplicationLayer,
 };
 use libautomotive::error::AutomotiveError;
-use libautomotive::physical::mock::MockPhysical;
+use libautomotive::physical::{mock::MockPhysical, PhysicalLayer};
+use libautomotive::transport::doip::{DoIP, DoIPConfig};
 use libautomotive::transport::isotp::{IsoTp, IsoTpConfig};
+use libautomotive::transport::lin::{Lin, LinConfig, LIN_BREAK_BYTE, LIN_SYNC_BYTE};
 use libautomotive::transport::TransportLayer;
 use libautomotive::types::Frame;
+use std::time::Duration;
 
 #[test]
-fn test_full_stack_uds() {
+fn test_full_stack_uds() -> Result<(), AutomotiveError> {
     // Create mock physical layer that simulates ECU responses
-    let mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
+    let mut mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
         let data = &frame.data;
         match data[0] {
             SID_DIAGNOSTIC_SESSION_CONTROL => {
@@ -39,7 +44,7 @@ fn test_full_stack_uds() {
                 } else {
                     Ok(Frame {
                         id: 0x7E8,
-                        data: vec![0x67, 0x02], // Key accepted
+                        data: vec![0x67, 0x02], // Key response
                         timestamp: 0,
                         is_extended: false,
                         is_fd: false,
@@ -58,39 +63,39 @@ fn test_full_stack_uds() {
             _ => Err(AutomotiveError::NotInitialized),
         }
     })));
+    mock.open()?;
 
     // Create transport layer
     let config = IsoTpConfig::default();
     let mut transport = IsoTp::with_physical(config, mock);
-    transport.open().unwrap();
+    transport.open()?;
 
     // Create UDS layer
     let mut uds = Uds::with_transport(UdsConfig::default(), transport);
-    uds.open().unwrap();
+    uds.open()?;
 
     // Test diagnostic session control
-    uds.change_session(UdsSessionType::Programming).unwrap();
+    uds.change_session(UdsSessionType::Programming)?;
     assert_eq!(uds.status.session_type, UdsSessionType::Programming);
 
     // Test security access
     uds.security_access(1, |seed| {
         // Simple key calculation for testing
         seed.iter().map(|x| x + 1).collect()
-    })
-    .unwrap();
+    })?;
     assert_eq!(uds.status.security_level, 1);
 
     // Test read data by identifier
-    let vin_data = uds.read_data_by_id(0xF190).unwrap();
+    let vin_data = uds.read_data_by_id(0xF190)?;
     assert_eq!(vin_data, vec![0x12, 0x34]);
 
-    uds.close().unwrap();
+    Ok(())
 }
 
 #[test]
-fn test_full_stack_obd() {
+fn test_full_stack_obd() -> Result<(), AutomotiveError> {
     // Create mock physical layer that simulates OBD-II responses
-    let mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
+    let mut mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
         let data = &frame.data;
         match data[0] {
             0x01 => {
@@ -122,45 +127,47 @@ fn test_full_stack_obd() {
             _ => Err(AutomotiveError::NotInitialized),
         }
     })));
+    mock.open()?;
 
     // Create transport layer
     let config = IsoTpConfig::default();
     let mut transport = IsoTp::with_physical(config, mock);
-    transport.open().unwrap();
+    transport.open()?;
 
     // Create OBD layer
     let mut obd = Obd::with_transport(ObdConfig::default(), transport);
-    obd.open().unwrap();
+    obd.open()?;
 
     // Test reading engine RPM
-    let rpm = obd.read_sensor_data(PID_ENGINE_RPM).unwrap();
+    let rpm = obd.read_sensor_data(PID_ENGINE_RPM)?;
     match rpm {
         PidData::EngineRpm(value) => assert_eq!(value, 1750.0),
         _ => panic!("Unexpected PID data type"),
     }
 
     // Test reading DTCs
-    let dtcs = obd.read_dtc().unwrap();
+    let dtcs = obd.read_dtc()?;
     assert_eq!(dtcs.len(), 2);
     assert_eq!(dtcs[0], "P0143");
     assert_eq!(dtcs[1], "P0244");
 
-    obd.close().unwrap();
+    Ok(())
 }
 
 #[test]
-fn test_full_stack_error_handling() {
+fn test_full_stack_error_handling() -> Result<(), AutomotiveError> {
     // Create mock physical layer that simulates errors
-    let mock = MockPhysical::new_error();
+    let mut mock = MockPhysical::new_error();
+    mock.open()?;
 
     // Create transport layer
     let config = IsoTpConfig::default();
     let mut transport = IsoTp::with_physical(config, mock);
-    transport.open().unwrap();
+    transport.open()?;
 
     // Create UDS layer
     let mut uds = Uds::with_transport(UdsConfig::default(), transport);
-    uds.open().unwrap();
+    uds.open()?;
 
     // Test error handling
     let result = uds.change_session(UdsSessionType::Programming);
@@ -170,13 +177,13 @@ fn test_full_stack_error_handling() {
         AutomotiveError::NotInitialized
     ));
 
-    uds.close().unwrap();
+    Ok(())
 }
 
 #[test]
-fn test_full_stack_multi_layer() {
+fn test_full_stack_multi_layer() -> Result<(), AutomotiveError> {
     // Create mock physical layer that simulates both UDS and OBD-II responses
-    let mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
+    let mut mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
         let data = &frame.data;
         match data[0] {
             SID_DIAGNOSTIC_SESSION_CONTROL => {
@@ -207,27 +214,30 @@ fn test_full_stack_multi_layer() {
             _ => Err(AutomotiveError::NotInitialized),
         }
     })));
+    mock.open()?;
 
     // Test UDS
     let config = IsoTpConfig::default();
     let mut transport = IsoTp::with_physical(config, mock);
-    transport.open().unwrap();
+    transport.open()?;
     let mut uds = Uds::with_transport(UdsConfig::default(), transport);
-    uds.open().unwrap();
-    uds.change_session(UdsSessionType::Programming).unwrap();
+    uds.open()?;
+    uds.change_session(UdsSessionType::Programming)?;
     assert_eq!(uds.status.session_type, UdsSessionType::Programming);
-    uds.close().unwrap();
 
     // Test OBD-II
     let config = IsoTpConfig::default();
-    let mut transport = IsoTp::with_physical(config, MockPhysical::new_echo());
-    transport.open().unwrap();
+    let mut mock = MockPhysical::new_echo();
+    mock.open()?;
+    let mut transport = IsoTp::with_physical(config, mock);
+    transport.open()?;
     let mut obd = Obd::with_transport(ObdConfig::default(), transport);
-    obd.open().unwrap();
-    let rpm = obd.read_sensor_data(PID_ENGINE_RPM).unwrap();
+    obd.open()?;
+    let rpm = obd.read_sensor_data(PID_ENGINE_RPM)?;
     match rpm {
         PidData::EngineRpm(value) => assert_eq!(value, 1750.0),
         _ => panic!("Unexpected PID data type"),
     }
-    obd.close().unwrap();
+
+    Ok(())
 }

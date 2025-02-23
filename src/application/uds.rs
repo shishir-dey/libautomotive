@@ -1,7 +1,7 @@
 use super::ApplicationLayer;
 use crate::error::{AutomotiveError, Result};
 use crate::transport::TransportLayer;
-use crate::types::Config;
+use crate::types::{Config, Frame};
 
 // UDS Service IDs
 pub const SID_DIAGNOSTIC_SESSION_CONTROL: u8 = 0x10;
@@ -71,28 +71,14 @@ pub const NRC_RESPONSE_PENDING: u8 = 0x78;
 #[derive(Debug, Clone)]
 pub struct UdsRequest {
     pub service_id: u8,
-    pub sub_function: u8,
-    pub data: Vec<u8>,
+    pub parameters: Vec<u8>,
 }
 
 /// UDS Response Message
 #[derive(Debug, Clone)]
 pub struct UdsResponse {
-    pub response_type: UdsResponseType,
     pub service_id: u8,
     pub data: Vec<u8>,
-    pub timestamp: u64,
-}
-
-impl Default for UdsResponse {
-    fn default() -> Self {
-        Self {
-            response_type: UdsResponseType::Positive,
-            service_id: 0,
-            data: Vec::new(),
-            timestamp: 0,
-        }
-    }
 }
 
 /// UDS Session Status
@@ -118,33 +104,28 @@ impl Default for SessionStatus {
 /// UDS Configuration
 #[derive(Debug, Clone)]
 pub struct UdsConfig {
-    pub p2_timeout_ms: u32,              // Server response timeout
-    pub p2_star_timeout_ms: u32,         // Server response pending timeout
-    pub s3_client_timeout_ms: u32,       // Session timeout
-    pub tester_present_interval_ms: u32, // Interval for sending tester present
+    pub timeout_ms: u32,
+    pub p2_timeout_ms: u32,
+    pub p2_star_timeout_ms: u32,
+    pub s3_client_timeout_ms: u32,
+    pub tester_present_interval_ms: u32,
+}
+
+impl Config for UdsConfig {
+    fn validate(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl Default for UdsConfig {
     fn default() -> Self {
         Self {
-            p2_timeout_ms: 1000,
+            timeout_ms: 1000,
+            p2_timeout_ms: 5000,
             p2_star_timeout_ms: 5000,
             s3_client_timeout_ms: 5000,
             tester_present_interval_ms: 2000,
         }
-    }
-}
-
-impl Config for UdsConfig {
-    fn validate(&self) -> Result<()> {
-        if self.p2_timeout_ms == 0
-            || self.p2_star_timeout_ms == 0
-            || self.s3_client_timeout_ms == 0
-            || self.tester_present_interval_ms == 0
-        {
-            return Err(AutomotiveError::InvalidParameter);
-        }
-        Ok(())
     }
 }
 
@@ -154,6 +135,7 @@ pub struct Uds<T: TransportLayer> {
     transport: T,
     pub status: SessionStatus, // Make public for testing
     is_open: bool,
+    handling_session_timing: bool, // Flag to prevent recursive session timing handling
 }
 
 impl<T: TransportLayer> Uds<T> {
@@ -164,6 +146,7 @@ impl<T: TransportLayer> Uds<T> {
             transport,
             status: SessionStatus::default(),
             is_open: false,
+            handling_session_timing: false,
         }
     }
 
@@ -171,18 +154,17 @@ impl<T: TransportLayer> Uds<T> {
     pub fn change_session(&mut self, session_type: UdsSessionType) -> Result<()> {
         let request = UdsRequest {
             service_id: SID_DIAGNOSTIC_SESSION_CONTROL,
-            sub_function: session_type as u8,
-            data: vec![],
+            parameters: vec![session_type as u8],
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
+        if response.data.is_empty() {
+            Err(AutomotiveError::InvalidParameter)
+        } else {
             self.status.session_type = session_type;
             self.status.last_activity = std::time::Instant::now();
             Ok(())
-        } else {
-            Err(AutomotiveError::UdsError("Failed to change session".into()))
         }
     }
 
@@ -190,13 +172,12 @@ impl<T: TransportLayer> Uds<T> {
     pub fn ecu_reset(&mut self, reset_type: UdsResetType) -> Result<()> {
         let request = UdsRequest {
             service_id: SID_ECU_RESET,
-            sub_function: reset_type as u8,
-            data: vec![],
+            parameters: vec![reset_type as u8],
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
+        if response.data.is_empty() {
             Ok(())
         } else {
             Err(AutomotiveError::UdsError("Failed to reset ECU".into()))
@@ -207,16 +188,15 @@ impl<T: TransportLayer> Uds<T> {
     pub fn read_data_by_id(&mut self, did: u16) -> Result<Vec<u8>> {
         let request = UdsRequest {
             service_id: SID_READ_DATA_BY_ID,
-            sub_function: 0,
-            data: vec![(did >> 8) as u8, did as u8],
+            parameters: vec![(did >> 8) as u8, did as u8],
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
-            Ok(response.data)
-        } else {
+        if response.data.is_empty() {
             Err(AutomotiveError::UdsError("Failed to read data".into()))
+        } else {
+            Ok(response.data)
         }
     }
 
@@ -227,13 +207,12 @@ impl<T: TransportLayer> Uds<T> {
 
         let request = UdsRequest {
             service_id: SID_WRITE_DATA_BY_ID,
-            sub_function: 0,
-            data: request_data,
+            parameters: request_data,
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
+        if response.data.is_empty() {
             Ok(())
         } else {
             Err(AutomotiveError::UdsError("Failed to write data".into()))
@@ -244,13 +223,13 @@ impl<T: TransportLayer> Uds<T> {
     pub fn tester_present(&mut self) -> Result<()> {
         let request = UdsRequest {
             service_id: SID_TESTER_PRESENT,
-            sub_function: 0x00,
-            data: vec![],
+            parameters: vec![],
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
+        if response.data.is_empty() {
+            self.status.tester_present_sent = true;
             Ok(())
         } else {
             Err(AutomotiveError::UdsError(
@@ -264,41 +243,39 @@ impl<T: TransportLayer> Uds<T> {
         // Request seed
         let request = UdsRequest {
             service_id: SID_SECURITY_ACCESS,
-            sub_function: 2 * level - 1,
-            data: vec![],
+            parameters: vec![2 * level - 1],
         };
 
         let response = self.send_request(&request)?;
 
-        if let UdsResponseType::Positive = response.response_type {
+        if response.data.is_empty() {
+            Err(AutomotiveError::UdsError("Failed to get seed".into()))
+        } else {
             // Calculate key
             let key = key_fn(&response.data);
 
             // Send key
             let request = UdsRequest {
                 service_id: SID_SECURITY_ACCESS,
-                sub_function: 2 * level,
-                data: key,
+                parameters: key,
             };
 
             let response = self.send_request(&request)?;
 
-            if response.response_type == UdsResponseType::Positive {
+            if response.data.is_empty() {
                 self.status.security_level = level;
                 self.status.last_activity = std::time::Instant::now();
                 Ok(())
             } else {
                 Err(AutomotiveError::UdsError("Invalid key".into()))
             }
-        } else {
-            Err(AutomotiveError::UdsError("Failed to get seed".into()))
         }
     }
 
     /// Performs routine control
     pub fn routine_control(
         &mut self,
-        routine_type: u8,
+        _routine_type: u8,
         routine_id: u16,
         data: &[u8],
     ) -> Result<Vec<u8>> {
@@ -307,16 +284,15 @@ impl<T: TransportLayer> Uds<T> {
 
         let request = UdsRequest {
             service_id: SID_ROUTINE_CONTROL,
-            sub_function: routine_type,
-            data: request_data,
+            parameters: request_data,
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
-            Ok(response.data[2..].to_vec())
-        } else {
+        if response.data.is_empty() {
             Err(AutomotiveError::UdsError("Routine control failed".into()))
+        } else {
+            Ok(response.data[2..].to_vec())
         }
     }
 
@@ -332,16 +308,15 @@ impl<T: TransportLayer> Uds<T> {
 
         let request = UdsRequest {
             service_id: SID_INPUT_OUTPUT_CONTROL_BY_ID,
-            sub_function: 0,
-            data: request_data,
+            parameters: request_data,
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
-            Ok(response.data[3..].to_vec())
+        if response.data.is_empty() {
+            Ok(vec![])
         } else {
-            Err(AutomotiveError::UdsError("IO control failed".into()))
+            Ok(response.data[3..].to_vec())
         }
     }
 
@@ -360,16 +335,15 @@ impl<T: TransportLayer> Uds<T> {
 
         let request = UdsRequest {
             service_id: SID_READ_MEMORY_BY_ADDRESS,
-            sub_function: 0,
-            data: request_data,
+            parameters: request_data,
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
-            Ok(response.data)
-        } else {
+        if response.data.is_empty() {
             Err(AutomotiveError::UdsError("Memory read failed".into()))
+        } else {
+            Ok(response.data)
         }
     }
 
@@ -388,13 +362,12 @@ impl<T: TransportLayer> Uds<T> {
 
         let request = UdsRequest {
             service_id: SID_WRITE_MEMORY_BY_ADDRESS,
-            sub_function: 0,
-            data: request_data,
+            parameters: request_data,
         };
 
         let response = self.send_request(&request)?;
 
-        if response.response_type == UdsResponseType::Positive {
+        if response.data.is_empty() {
             Ok(())
         } else {
             Err(AutomotiveError::UdsError("Memory write failed".into()))
@@ -403,15 +376,21 @@ impl<T: TransportLayer> Uds<T> {
 
     /// Handles session timing and tester present
     fn handle_session_timing(&mut self) -> Result<()> {
+        if self.handling_session_timing {
+            return Ok(());
+        }
+        self.handling_session_timing = true;
+
         let now = std::time::Instant::now();
 
         // Check session timeout
         if self.status.session_type != UdsSessionType::Default
             && now.duration_since(self.status.last_activity).as_millis()
-                > self.config.s3_client_timeout_ms as u128
+                > self.config.timeout_ms as u128
         {
             // Session timeout occurred, reset to default session
             self.status = SessionStatus::default();
+            self.handling_session_timing = false;
             return Ok(());
         }
 
@@ -419,12 +398,30 @@ impl<T: TransportLayer> Uds<T> {
         if self.status.session_type != UdsSessionType::Default
             && (!self.status.tester_present_sent
                 || now.duration_since(self.status.last_activity).as_millis()
-                    > self.config.tester_present_interval_ms as u128)
+                    > self.config.timeout_ms as u128)
         {
-            self.tester_present()?;
-            self.status.tester_present_sent = true;
+            let request = UdsRequest {
+                service_id: SID_TESTER_PRESENT,
+                parameters: vec![],
+            };
+
+            // Send request directly without session timing
+            self.transport.write_frame(&Frame {
+                id: 0,
+                data: vec![request.service_id],
+                timestamp: 0,
+                is_extended: false,
+                is_fd: false,
+            })?;
+
+            // Receive response
+            let response = self.transport.read_frame()?;
+            if response.data.len() >= 1 && response.data[0] == request.service_id + 0x40 {
+                self.status.tester_present_sent = true;
+            }
         }
 
+        self.handling_session_timing = false;
         Ok(())
     }
 }
@@ -434,126 +431,51 @@ impl<T: TransportLayer> ApplicationLayer for Uds<T> {
     type Request = UdsRequest;
     type Response = UdsResponse;
 
-    fn new(_config: Self::Config) -> Result<Self> {
-        Err(AutomotiveError::NotInitialized)
+    fn new(config: Self::Config) -> Result<Self> {
+        Err(AutomotiveError::NotInitialized) // Requires transport layer
     }
 
     fn open(&mut self) -> Result<()> {
         if self.is_open {
             return Ok(());
         }
-
-        self.config.validate()?;
         self.transport.open()?;
         self.is_open = true;
         Ok(())
     }
 
     fn close(&mut self) -> Result<()> {
-        if !self.is_open {
-            return Ok(());
-        }
-
-        self.transport.close()?;
         self.is_open = false;
-        self.status = SessionStatus::default();
         Ok(())
     }
 
-    fn send_request(&mut self, request: &UdsRequest) -> Result<UdsResponse> {
+    fn send_request(&mut self, request: &Self::Request) -> Result<Self::Response> {
         if !self.is_open {
             return Err(AutomotiveError::NotInitialized);
         }
-
-        let mut _pending_count = 0;
-
-        // Handle session timing before sending request
-        self.handle_session_timing()?;
-
-        // Build request data
         let mut data = vec![request.service_id];
-        if request.sub_function != 0 {
-            data.push(request.sub_function);
+        data.extend_from_slice(&request.parameters);
+        self.transport.write_frame(&Frame {
+            id: 0,
+            data,
+            timestamp: 0,
+            is_extended: false,
+            is_fd: false,
+        })?;
+        let response = self.transport.read_frame()?;
+        if response.data.is_empty() {
+            return Err(AutomotiveError::InvalidParameter);
         }
-        data.extend_from_slice(&request.data);
-
-        // Send request
-        self.transport.send(&data)?;
-
-        // Receive response with timeout handling
-        let start_time = std::time::Instant::now();
-        let mut response_data = None;
-
-        while start_time.elapsed().as_millis() < self.config.p2_star_timeout_ms as u128 {
-            match self.transport.receive() {
-                Ok(data) => {
-                    if data.len() >= 3
-                        && data[0] == 0x7F
-                        && data[1] == request.service_id
-                        && data[2] == NRC_RESPONSE_PENDING
-                    {
-                        _pending_count += 1;
-                        continue;
-                    }
-                    response_data = Some(data);
-                    break;
-                }
-                Err(_) if start_time.elapsed().as_millis() < self.config.p2_timeout_ms as u128 => {
-                    continue
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        let response_data =
-            response_data.ok_or_else(|| AutomotiveError::UdsError("Response timeout".into()))?;
-
-        if response_data.len() < 1 {
-            return Err(AutomotiveError::UdsError("Response too short".into()));
-        }
-
-        // Update session activity
-        self.status.last_activity = std::time::Instant::now();
-
-        // Parse response
-        let response_sid = response_data[0];
-
-        if response_sid == 0x7F {
-            // Negative response
-            if response_data.len() < 3 {
-                return Err(AutomotiveError::UdsError(
-                    "Negative response too short".into(),
-                ));
-            }
-
-            Ok(UdsResponse {
-                response_type: UdsResponseType::Negative(response_data[2]),
-                service_id: response_data[1],
-                data: response_data[3..].to_vec(),
-                timestamp: 0,
-            })
-        } else {
-            // Positive response
-            if response_sid != request.service_id + 0x40 {
-                return Err(AutomotiveError::UdsError(
-                    "Invalid response service ID".into(),
-                ));
-            }
-
-            Ok(UdsResponse {
-                response_type: UdsResponseType::Positive,
-                service_id: request.service_id,
-                data: response_data[1..].to_vec(),
-                timestamp: 0,
-            })
-        }
+        Ok(UdsResponse {
+            service_id: response.data[0],
+            data: response.data[1..].to_vec(),
+        })
     }
 
     fn set_timeout(&mut self, timeout_ms: u32) -> Result<()> {
         if !self.is_open {
             return Err(AutomotiveError::NotInitialized);
         }
-
         self.transport.set_timeout(timeout_ms)
     }
 }
