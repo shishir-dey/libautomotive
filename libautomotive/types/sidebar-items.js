@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["Address","Frame"],"trait":["Config","Port"],"type":["CanId","FrameData","Timestamp"]};
