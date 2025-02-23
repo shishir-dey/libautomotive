@@ -9,7 +9,7 @@ repository = "https://github.com/shishir-dey/libautomotive"
 homepage = "https://github.com/shishir-dey/libautomotive"
 documentation = "https://github.com/shishir-dey/libautomotive"
 readme = "README.md"
-keywords = ["rust", "can", "automotive", "obd2", "j1939"]
+keywords = ["can", "obd2", "uds", "j1939", "iso-tp"]
 categories = ["embedded", "hardware-support", "network-programming"]
 
 [dependencies]
