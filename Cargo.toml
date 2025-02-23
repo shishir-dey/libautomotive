@@ -1,13 +1,13 @@
 [package]
 name = "libautomotive"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A Rust library for automotive systems and protocols"
 authors = ["Shishir Dey <r0qck3ntp@mozmail.com>"]
 license = "MIT"
 repository = "https://github.com/shishir-dey/libautomotive"
-homepage = "https://github.com/shishir-dey/libautomotive"
-documentation = "https://github.com/shishir-dey/libautomotive"
+homepage = "https://shishir-dey.github.io/libautomotive/"
+documentation = "https://shishir-dey.github.io/libautomotive/"
 readme = "README.md"
 keywords = ["can", "obd2", "uds", "j1939", "iso-tp"]
 categories = ["embedded", "hardware-support", "network-programming"]
