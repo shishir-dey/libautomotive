@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["CanFdBitrate"],"struct":["CanFd","CanFdConfig","CanFdOptions","TxEvent"]};
