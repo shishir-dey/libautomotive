@@ -22,16 +22,43 @@
 //!
 //! # Examples
 //!
-//! ```rust,no_run
-//! use libautomotive::application::{uds, obdii};
+//! ```text
+//! # Example usage of the application layer (conceptual, not actual code)
+//! # UDS configuration:
+//! let uds_config = uds::CustomConfig {
+//!     timeout_ms: 1000,             // 1 second timeout
+//!     p2_timeout_ms: 5000,          // 5 second P2 timeout
+//!     tester_present_interval_ms: 2000  // Send tester present every 2 seconds
+//! };
 //!
-//! // UDS example
-//! let uds_config = uds::Config::default();
-//! let uds_interface = uds::Interface::new(uds_config);
+//! # Create a UDS instance
+//! let mut uds = uds::CustomInterface::new(uds_config);
+//! uds.open();
 //!
-//! // OBD-II example
-//! let obd_config = obdii::Config::default();
-//! let obd_interface = obdii::Interface::new(obd_config);
+//! # Change diagnostic session
+//! uds.change_session(uds::SESSION_PROGRAMMING);
+//!
+//! # Read ECU data
+//! let vin_data = uds.read_data_by_id(0xF190); // Vehicle Identification Number
+//!
+//! # Write ECU data
+//! uds.write_data_by_id(0xF198, &[0x01, 0x02, 0x03]);
+//!
+//! # OBD-II configuration:
+//! let obd_config = obdii::CustomConfig {
+//!     timeout_ms: 1000,    // 1 second timeout
+//!     auto_format: true    // Auto-format responses
+//! };
+//!
+//! # Create an OBD-II instance
+//! let mut obd = obdii::CustomInterface::new(obd_config);
+//! obd.open();
+//!
+//! # Read engine RPM
+//! let engine_rpm = obd.read_sensor(0x0C); // PID for engine RPM
+//!
+//! # Read diagnostic trouble codes
+//! let dtcs = obd.read_dtc();
 //! ```
 
 pub mod obdii;

@@ -17,15 +17,31 @@
 //!
 //! # Examples
 //!
-//! ```rust,no_run
-//! use libautomotive::network::j1939;
+//! ```text
+//! # Example usage of the network layer (conceptual, not actual code)
+//! # J1939 configuration:
+//! let j1939_config = j1939::CustomConfig {
+//!     name: 0x0000AABBCCDDEEFF, // ECU NAME (64-bit identifier)
+//!     address: 0x42,            // Preferred source address
+//!     priority: 6               // Default priority for messages
+//! };
 //!
-//! let config = j1939::Config::default();
-//! let interface = j1939::Interface::new(config);
+//! # Create a J1939 instance and open the connection
+//! let mut j1939 = j1939::CustomInterface::new(j1939_config);
+//! j1939.open();
 //!
-//! // Send a J1939 message
-//! let msg = j1939::Message::new(/* ... */);
-//! interface.send(&msg);
+//! # Claim a network address
+//! j1939.claim_address(0x42);
+//!
+//! # Send a J1939 message
+//! let pgn = 0x00EF00;     // Example PGN (Electronic Engine Controller)
+//! let dest_addr = 0xFF;   // Broadcast address
+//! let data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+//!
+//! j1939.send_message(pgn, dest_addr, &data);
+//!
+//! # Receive J1939 messages
+//! let msg = j1939.receive_message();
 //! ```
 
 pub mod j1939;

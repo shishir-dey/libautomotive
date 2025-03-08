@@ -13,16 +13,23 @@
 //!
 //! # Examples
 //!
-//! ```rust,no_run
-//! use libautomotive::physical::{can, canfd};
+//! ```text
+//! # Example usage of the physical layer (conceptual, not actual code)
+//! # CAN interface example:
+//! let can_config = can::CustomConfig {
+//!     bitrate: 500_000,  // 500 kbps
+//!     sample_point: 0.75  // 75% sample point
+//! };
+//! let mut can = can::CustomInterface::new(can_config);
+//! can.open();
 //!
-//! // Classic CAN example
-//! let can_config = can::Config::default();
-//! let can_interface = can::Interface::new(can_config);
-//!
-//! // CAN-FD example
-//! let canfd_config = canfd::Config::default();
-//! let canfd_interface = canfd::Interface::new(canfd_config);
+//! # CAN-FD interface example:
+//! let canfd_config = canfd::CustomConfig {
+//!     data_bitrate: 2_000_000,  // 2 Mbps
+//!     nominal_bitrate: 500_000  // 500 kbps
+//! };
+//! let mut canfd = canfd::CustomInterface::new(canfd_config);
+//! canfd.open();
 //! ```
 
 pub mod can;

@@ -24,10 +24,41 @@
 //!
 //! ## Example
 //!
-//! ```rust,no_run
-//! use libautomotive::{can, j1939, uds};
+//! ```text
+//! # Complete usage example (conceptual, not actual code)
+//! use libautomotive::physical::can;
+//! use libautomotive::transport::isotp;
+//! use libautomotive::application::uds;
 //!
-//! // Your implementation code here
+//! # 1. Set up physical layer (CAN)
+//! let can_config = can::CustomConfig {
+//!     bitrate: 500_000,
+//!     sample_point: 0.75
+//! };
+//! let mut can = can::CustomInterface::new(can_config);
+//! can.open();
+//!
+//! # 2. Set up transport layer (ISO-TP)
+//! let isotp_config = isotp::CustomConfig {
+//!     tx_id: 0x7E0,
+//!     rx_id: 0x7E8,
+//!     block_size: 8,
+//!     st_min: 10
+//! };
+//! let mut isotp = isotp::CustomInterface::new_with_can(isotp_config, can);
+//! isotp.open();
+//!
+//! # 3. Set up application layer (UDS)
+//! let uds_config = uds::CustomConfig {
+//!     timeout_ms: 1000,
+//!     p2_timeout_ms: 5000
+//! };
+//! let mut uds = uds::CustomInterface::new_with_isotp(uds_config, isotp);
+//! uds.open();
+//!
+//! # 4. Use UDS services
+//! uds.change_session(uds::SESSION_EXTENDED);
+//! let vin = uds.read_data_by_id(0xF190);  // Read Vehicle Identification Number
 //! ```
 //!
 //! ## Credits and Acknowledgments
@@ -39,6 +70,9 @@
 //! - [uds-c](https://github.com/openxc/uds-c) - Unified Diagnostic Services (UDS) C library
 //! - [obdii](https://github.com/ejvaughan/obdii) - OBD-II diagnostic protocol implementation
 //! - [canis-can-sdk](https://github.com/kentindell/canis-can-sdk) - CAN protocol stack implementation
+//! - [AgIsoStack++](https://github.com/Open-Agriculture/AgIsoStack-plus-plus) - Open-source C++ ISOBUS library
+//! - [open-LIN-c](https://github.com/open-LIN/open-LIN-c) - Implementation of Local Interconnect Network in C
+//! - [doip-library](https://github.com/doip/doip-library) - Diagnostic over IP (DoIP) protocol implementation
 //!
 //! These projects have provided valuable insights and reference implementations for various
 //! automotive protocols. We are grateful to their authors and contributors for making their

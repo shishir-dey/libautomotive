@@ -17,15 +17,29 @@
 //!
 //! # Examples
 //!
-//! ```rust,no_run
-//! use libautomotive::transport::isotp;
+//! ```text
+//! # Example usage of the transport layer (conceptual, not actual code)
+//! # ISO-TP configuration example:
+//! let isotp_config = isotp::CustomConfig {
+//!     tx_id: 0x7E0,         // Transmit CAN ID
+//!     rx_id: 0x7E8,         // Receive CAN ID
+//!     block_size: 8,        // Number of frames before flow control
+//!     st_min: 10,           // Minimum separation time between frames (10ms)
+//!     use_extended_addressing: false
+//! };
 //!
-//! let config = isotp::Config::default();
-//! let interface = isotp::Interface::new(config);
+//! # Create an ISO-TP instance with the config
+//! let mut isotp = isotp::CustomInterface::new(isotp_config);
 //!
-//! // Send a multi-frame message
-//! let data = vec![0u8; 100];
-//! interface.send(&data);
+//! # Open the connection
+//! isotp.open();
+//!
+//! # Send a diagnostic message (UDS request)
+//! let request_data = [0x22, 0xF1, 0x90]; // UDS read data by ID (VIN)
+//! isotp.send(&request_data);
+//!
+//! # Receive response
+//! let response = isotp.receive();
 //! ```
 
 pub mod doip;
