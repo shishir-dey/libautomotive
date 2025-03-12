@@ -1,3 +1,6 @@
+use std::array::{self, from_fn};
+use std::result;
+
 use super::ApplicationLayer;
 use crate::error::{AutomotiveError, Result};
 use crate::transport::TransportLayer;
@@ -417,6 +420,152 @@ impl<T: TransportLayer> Uds<T> {
         self.handling_session_timing = false;
         Ok(())
     }
+
+    pub fn request_download<A, S>(&mut self, address: A, size: S) -> Result<Downloader<'_, T>>
+    where
+        A: TransferAddressOrSize,
+        S: TransferAddressOrSize,
+    {
+        const {
+            assert!(A::BYTE_COUNT <= 0xF);
+            assert!(S::BYTE_COUNT <= 0xF);
+        }
+        let encryption = 0;
+        let compression = 0;
+        let data_format = encryption | compression << 4;
+        let address_and_length_format = A::BYTE_COUNT as u8 | ((S::BYTE_COUNT as u8) << 4);
+
+        let mut request_data = vec![data_format, address_and_length_format];
+        address.append_to_vec(&mut request_data);
+        size.append_to_vec(&mut request_data);
+
+        let request = UdsRequest {
+            service_id: SID_REQUEST_DOWNLOAD,
+            parameters: request_data,
+        };
+
+        let response = self.send_request(&request)?;
+
+        if response.data.is_empty() {
+            return Err(AutomotiveError::UdsError("Routine control failed".into()));
+        }
+
+        let max_num_block_len_byte_count = usize::from(response.data[1] >> 4);
+        let max_num_block_len = &response.data[1..(max_num_block_len_byte_count + 1)];
+
+        assert!(max_num_block_len_byte_count <= u64::BITS as usize / 8);
+        assert_eq!(max_num_block_len.len(), max_num_block_len_byte_count);
+
+        let max_num_block_len_bytes = array::from_fn(|i| {
+            let offset = 8 - max_num_block_len_byte_count;
+            if i > offset {
+                let index = i - offset;
+                max_num_block_len[index]
+            } else {
+                0
+            }
+        });
+        let max_block_size = u64::from_le_bytes(max_num_block_len_bytes);
+
+        Ok(Downloader::new(max_block_size, self))
+    }
+}
+
+pub trait TransferAddressOrSize {
+    const BYTE_COUNT: usize;
+    fn append_to_vec(self, vec: &mut Vec<u8>);
+}
+
+macro_rules! impl_transfer_address_or_size {
+    ($t:ty) => {
+        impl TransferAddressOrSize for $t {
+            const BYTE_COUNT: usize = <$t>::BITS as usize / 8;
+
+            fn append_to_vec(self, vec: &mut Vec<u8>) {
+                let bytes = self.to_le_bytes();
+                vec.extend_from_slice(&bytes);
+            }
+        }
+    };
+}
+
+impl_transfer_address_or_size!(u8);
+impl_transfer_address_or_size!(u16);
+impl_transfer_address_or_size!(u32);
+impl_transfer_address_or_size!(u64);
+impl_transfer_address_or_size!(usize);
+
+pub struct Downloader<'a, T: TransportLayer> {
+    /// This length is the complete message length, including the SID and data-parameters in the TransferData request.
+    max_block_size: u64,
+    uds: &'a mut Uds<T>,
+}
+
+pub struct ValidatonError;
+
+impl<'a, T: TransportLayer> Downloader<'a, T> {
+    fn new(max_block_size: u64, uds: &'a mut Uds<T>) -> Self {
+        assert!(max_block_size > 2);
+
+        Downloader {
+            max_block_size,
+            uds,
+        }
+    }
+
+    pub fn transfer_data(self, data: impl IntoIterator<Item = u8>, mut validator: impl FnMut(&[u8], &[u8]) -> result::Result<(), ValidatonError>) -> Result<()> {
+        let overhead_bytes = 2; // SID + block_sequence_id
+        let mut block_sequence_counter = 1;
+
+        let mut data = data.into_iter();
+
+        loop {
+            let mut request_data = vec![block_sequence_counter];
+
+            let data_chunk: Vec<u8> = (&mut data).take(self.max_block_size as usize - overhead_bytes).collect();
+            request_data.extend(&data_chunk);
+
+            if data_chunk.is_empty() {
+                break;
+            }
+
+            let request = UdsRequest {
+                service_id: SID_TRANSFER_DATA,
+                parameters: request_data,
+            };
+
+            let response = self.uds.send_request(&request)?;
+
+            if response.data.is_empty() {
+                return Err(AutomotiveError::UdsError("Transfer data failed".into()));
+            }
+
+            if response.data[0] != block_sequence_counter {
+                return Err(AutomotiveError::UdsError(
+                    "Transfer data - wrong sequence number".into(),
+                ));
+            }
+
+            validator(&data_chunk, &response.data[1..]).map_err(|_| AutomotiveError::UdsError("Validation error".into()))?;
+
+            block_sequence_counter = block_sequence_counter.wrapping_add(1);
+        }
+
+        let request = UdsRequest {
+            service_id: SID_REQUEST_TRANSFER_EXIT,
+            parameters: vec![],
+        };
+
+        let response = self.uds.send_request(&request)?;
+
+        if !response.data.is_empty() {
+            return Err(AutomotiveError::UdsError(
+                "Request transfer exit failed".into(),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 impl<T: TransportLayer> ApplicationLayer for Uds<T> {
@@ -450,8 +599,8 @@ impl<T: TransportLayer> ApplicationLayer for Uds<T> {
         data.extend_from_slice(&request.parameters);
 
         // Send the request
-        self.transport.write_frame(&Frame {
-            id: 0,
+        self.transport.write_frame(&Frame { // <-- Is this really supposed to be write frame and not send. If so then why bypass the transport layer?
+            id: 0, // <---- Why ID=0 here?
             data: data.clone(),
             timestamp: 0,
             is_extended: false,
@@ -463,7 +612,7 @@ impl<T: TransportLayer> ApplicationLayer for Uds<T> {
         let max_retries = 5; // Limit retries to avoid infinite loop
 
         loop {
-            let response = self.transport.read_frame()?;
+            let response = self.transport.read_frame()?;// <-- Is this really supposed to be read frame and not send
             if response.data.is_empty() {
                 return Err(AutomotiveError::InvalidParameter);
             }
