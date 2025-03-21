@@ -513,7 +513,7 @@ impl<'a, T: TransportLayer> Downloader<'a, T> {
         }
     }
 
-    pub fn transfer_data(self, data: impl IntoIterator<Item = u8>, mut validator: impl FnMut(&[u8], &[u8]) -> result::Result<(), ValidatonError>) -> Result<()> {
+    pub fn transfer_all_data(self, data: impl IntoIterator<Item = u8>, mut validator: impl FnMut(&[u8], &[u8]) -> result::Result<(), ValidatonError>) -> Result<()> {
         let overhead_bytes = 2; // SID + block_sequence_id
         let mut block_sequence_counter = 1;
 
