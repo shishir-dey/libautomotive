@@ -3,7 +3,7 @@ use std::result;
 
 use super::ApplicationLayer;
 use crate::error::{AutomotiveError, Result};
-use crate::transport::TransportLayer;
+use crate::transport::{IsoTpTransport, TransportLayer};
 use crate::types::{Config, Frame};
 
 // UDS Service IDs
@@ -133,7 +133,7 @@ impl Default for UdsConfig {
 }
 
 /// UDS Implementation
-pub struct Uds<T: TransportLayer> {
+pub struct Uds<T: TransportLayer + IsoTpTransport> {
     config: UdsConfig,
     transport: T,
     pub status: SessionStatus, // Make public for testing
@@ -141,7 +141,7 @@ pub struct Uds<T: TransportLayer> {
     handling_session_timing: bool, // Flag to prevent recursive session timing handling
 }
 
-impl<T: TransportLayer> Uds<T> {
+impl<T: TransportLayer + IsoTpTransport> Uds<T> {
     /// Creates a new UDS instance with the given transport layer
     pub fn with_transport(config: UdsConfig, transport: T) -> Self {
         Self {
@@ -245,13 +245,7 @@ impl<T: TransportLayer> Uds<T> {
         let mut data = vec![request.service_id];
         data.extend_from_slice(&request.parameters);
 
-        self.transport.write_frame(&Frame {
-            id: 0,
-            data,
-            timestamp: 0,
-            is_extended: false,
-            is_fd: false,
-        })?;
+        self.transport.send(&data)?;
 
         // Set the flag regardless of response as we're using suppress positive response
         self.status.tester_present_sent = true;
@@ -434,6 +428,8 @@ impl<T: TransportLayer> Uds<T> {
         let compression = 0;
         let data_format = encryption | compression << 4;
         let address_and_length_format = A::BYTE_COUNT as u8 | ((S::BYTE_COUNT as u8) << 4);
+        
+        println!("address_and_length_format: {address_and_length_format:02X}");
 
         let mut request_data = vec![data_format, address_and_length_format];
         address.append_to_vec(&mut request_data);
@@ -451,6 +447,12 @@ impl<T: TransportLayer> Uds<T> {
         }
 
         let max_num_block_len_byte_count = usize::from(response.data[1] >> 4);
+
+        if response.data.len() < (max_num_block_len_byte_count + 1) {
+            dbg!(response.data[1] >> 4, response.data[1] & 0xF);
+            panic!("Invalid length: {:02X?}, expected: {}", response.data, (max_num_block_len_byte_count + 1));
+        }
+
         let max_num_block_len = &response.data[1..(max_num_block_len_byte_count + 1)];
 
         assert!(max_num_block_len_byte_count <= u64::BITS as usize / 8);
@@ -467,11 +469,13 @@ impl<T: TransportLayer> Uds<T> {
         });
         let max_block_size = u64::from_le_bytes(max_num_block_len_bytes);
 
+        println!("Request download done.");
+
         Ok(Downloader::new(max_block_size, self))
     }
 }
 
-pub trait TransferAddressOrSize {
+pub trait TransferAddressOrSize: std::fmt::Debug + Copy {
     const BYTE_COUNT: usize;
     fn append_to_vec(self, vec: &mut Vec<u8>);
 }
@@ -495,7 +499,7 @@ impl_transfer_address_or_size!(u32);
 impl_transfer_address_or_size!(u64);
 impl_transfer_address_or_size!(usize);
 
-pub struct Downloader<'a, T: TransportLayer> {
+pub struct Downloader<'a, T: TransportLayer + IsoTpTransport> {
     /// This length is the complete message length, including the SID and data-parameters in the TransferData request.
     max_block_size: u64,
     uds: &'a mut Uds<T>,
@@ -503,7 +507,7 @@ pub struct Downloader<'a, T: TransportLayer> {
 
 pub struct ValidatonError;
 
-impl<'a, T: TransportLayer> Downloader<'a, T> {
+impl<'a, T: TransportLayer + IsoTpTransport> Downloader<'a, T> {
     fn new(max_block_size: u64, uds: &'a mut Uds<T>) -> Self {
         assert!(max_block_size > 2);
 
@@ -568,7 +572,7 @@ impl<'a, T: TransportLayer> Downloader<'a, T> {
     }
 }
 
-impl<T: TransportLayer> ApplicationLayer for Uds<T> {
+impl<T: TransportLayer + IsoTpTransport> ApplicationLayer for Uds<T> {
     type Config = UdsConfig;
     type Request = UdsRequest;
     type Response = UdsResponse;
@@ -592,6 +596,7 @@ impl<T: TransportLayer> ApplicationLayer for Uds<T> {
     }
 
     fn send_request(&mut self, request: &Self::Request) -> Result<Self::Response> {
+        println!("Sending: {:02x?}", request);
         if !self.is_open {
             return Err(AutomotiveError::NotInitialized);
         }
@@ -599,32 +604,27 @@ impl<T: TransportLayer> ApplicationLayer for Uds<T> {
         data.extend_from_slice(&request.parameters);
 
         // Send the request
-        self.transport.write_frame(&Frame { // <-- Is this really supposed to be write frame and not send. If so then why bypass the transport layer?
-            id: 0, // <---- Why ID=0 here?
-            data: data.clone(),
-            timestamp: 0,
-            is_extended: false,
-            is_fd: false,
-        })?;
+        self.transport.send(&data)?;
 
         // Handle response pending (NRC 0x78)
         let mut retry_count = 0;
         let max_retries = 5; // Limit retries to avoid infinite loop
-
+        println!("Waiting for response...");
         loop {
-            let response = self.transport.read_frame()?;// <-- Is this really supposed to be read frame and not send
-            if response.data.is_empty() {
+            let response = self.transport.receive()?;// <-- Is this really supposed to be read frame and not send
+            if response.is_empty() {
                 return Err(AutomotiveError::InvalidParameter);
             }
 
             // Check for response pending (0x7F service_id 0x78)
-            if response.data.len() >= 3
-                && response.data[0] == 0x7F
-                && response.data[1] == request.service_id
-                && response.data[2] == NRC_RESPONSE_PENDING
+            if response.len() >= 3
+                && response[0] == 0x7F
+                && response[1] == request.service_id
+                && response[2] == NRC_RESPONSE_PENDING
             {
                 retry_count += 1;
                 if retry_count >= max_retries {
+                    println!("Timed out...");
                     break; // Exit after max retries to avoid infinite loop
                 }
 
@@ -632,21 +632,16 @@ impl<T: TransportLayer> ApplicationLayer for Uds<T> {
                 std::thread::sleep(std::time::Duration::from_millis(100));
 
                 // Resend the request - make sure to send the full request data
-                self.transport.write_frame(&Frame {
-                    id: 0,
-                    data: data.clone(),
-                    timestamp: 0,
-                    is_extended: false,
-                    is_fd: false,
-                })?;
+                self.transport.send(&data)?;
 
                 // Add a small delay to allow the mock to process the frame
                 std::thread::sleep(std::time::Duration::from_millis(10));
             } else {
+                dbg!(&response);
                 // Regular response
                 return Ok(UdsResponse {
-                    service_id: response.data[0],
-                    data: response.data[1..].to_vec(),
+                    service_id: response[0],
+                    data: response[1..].to_vec(),
                 });
             }
         }
