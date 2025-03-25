@@ -1,5 +1,5 @@
 use std::array::{self, from_fn};
-use std::result;
+use std::{iter, result};
 
 use super::ApplicationLayer;
 use crate::error::{AutomotiveError, Result};
@@ -82,6 +82,16 @@ pub struct UdsRequest {
 pub struct UdsResponse {
     pub service_id: u8,
     pub data: Vec<u8>,
+}
+
+impl UdsResponse {
+    pub fn negative_response(&self) -> Option<u8> {
+        if self.service_id == 0x7F {
+            Some(self.data[1])
+        } else {
+            None
+        }
+    }
 }
 
 /// UDS Session Status
@@ -429,11 +439,13 @@ impl<T: TransportLayer + IsoTpTransport> Uds<T> {
         let data_format = encryption | compression << 4;
         let address_and_length_format = A::BYTE_COUNT as u8 | ((S::BYTE_COUNT as u8) << 4);
         
-        println!("address_and_length_format: {address_and_length_format:02X}");
+        //println!("address_and_length_format: {address_and_length_format:02X}");
 
         let mut request_data = vec![data_format, address_and_length_format];
         address.append_to_vec(&mut request_data);
         size.append_to_vec(&mut request_data);
+
+        dbg!(address, size);
 
         let request = UdsRequest {
             service_id: SID_REQUEST_DOWNLOAD,
@@ -441,35 +453,34 @@ impl<T: TransportLayer + IsoTpTransport> Uds<T> {
         };
 
         let response = self.send_request(&request)?;
+        if let Some(nrc) = response.negative_response() {
+            return Err(AutomotiveError::UdsError(format!("Received negative response: 0x{nrc:02X?}")));
+        }
 
         if response.data.is_empty() {
             return Err(AutomotiveError::UdsError("Routine control failed".into()));
         }
 
-        let max_num_block_len_byte_count = usize::from(response.data[1] >> 4);
+        let max_num_block_len_byte_count = usize::from(response.data[0] >> 4);
 
         if response.data.len() < (max_num_block_len_byte_count + 1) {
-            dbg!(response.data[1] >> 4, response.data[1] & 0xF);
+            //dbg!(response.data[1] >> 4, response.data[1] & 0xF);
             panic!("Invalid length: {:02X?}, expected: {}", response.data, (max_num_block_len_byte_count + 1));
         }
 
-        let max_num_block_len = &response.data[1..(max_num_block_len_byte_count + 1)];
+        let max_num_block_len = &response.data[1..(1 + max_num_block_len_byte_count)];
+        println!("{:02X?}", max_num_block_len);
 
         assert!(max_num_block_len_byte_count <= u64::BITS as usize / 8);
         assert_eq!(max_num_block_len.len(), max_num_block_len_byte_count);
 
-        let max_num_block_len_bytes = array::from_fn(|i| {
-            let offset = 8 - max_num_block_len_byte_count;
-            if i > offset {
-                let index = i - offset;
-                max_num_block_len[index]
-            } else {
-                0
-            }
+        let mut it = iter::repeat(0).take(8 - max_num_block_len_byte_count).chain(max_num_block_len.into_iter().cloned());
+        let max_num_block_len_bytes = array::from_fn(|_| {
+            it.next().unwrap()
         });
-        let max_block_size = u64::from_le_bytes(max_num_block_len_bytes);
+        let max_block_size = u64::from_be_bytes(max_num_block_len_bytes);
 
-        println!("Request download done.");
+        println!("Request download done. bs: {max_block_size}");
 
         Ok(Downloader::new(max_block_size, self))
     }
@@ -486,7 +497,7 @@ macro_rules! impl_transfer_address_or_size {
             const BYTE_COUNT: usize = <$t>::BITS as usize / 8;
 
             fn append_to_vec(self, vec: &mut Vec<u8>) {
-                let bytes = self.to_le_bytes();
+                let bytes = self.to_be_bytes();
                 vec.extend_from_slice(&bytes);
             }
         }
@@ -540,13 +551,17 @@ impl<'a, T: TransportLayer + IsoTpTransport> Downloader<'a, T> {
 
             let response = self.uds.send_request(&request)?;
 
+            if let Some(nrc) = response.negative_response() {
+                return Err(AutomotiveError::UdsError(format!("Received negative response: 0x{nrc:02X?}")));
+            }
+            
             if response.data.is_empty() {
                 return Err(AutomotiveError::UdsError("Transfer data failed".into()));
             }
 
             if response.data[0] != block_sequence_counter {
                 return Err(AutomotiveError::UdsError(
-                    "Transfer data - wrong sequence number".into(),
+                    format!("Transfer data - wrong sequence number, expected: {}, got: {}", block_sequence_counter, response.data[0]),
                 ));
             }
 
@@ -609,7 +624,7 @@ impl<T: TransportLayer + IsoTpTransport> ApplicationLayer for Uds<T> {
         // Handle response pending (NRC 0x78)
         let mut retry_count = 0;
         let max_retries = 5; // Limit retries to avoid infinite loop
-        println!("Waiting for response...");
+        //println!("Waiting for response...");
         loop {
             let response = self.transport.receive()?;// <-- Is this really supposed to be read frame and not send
             if response.is_empty() {
@@ -637,7 +652,7 @@ impl<T: TransportLayer + IsoTpTransport> ApplicationLayer for Uds<T> {
                 // Add a small delay to allow the mock to process the frame
                 std::thread::sleep(std::time::Duration::from_millis(10));
             } else {
-                dbg!(&response);
+                println!("{:02X?}", response);
                 // Regular response
                 return Ok(UdsResponse {
                     service_id: response[0],

@@ -172,7 +172,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
             }
         }
 
-        println!("Sending first frame: {frame_data:02X?}");
+        println!("Sending FF frame: {frame_data:02X?}");
 
         // Send first frame
         self.write_frame(&Frame {
@@ -189,11 +189,15 @@ impl<P: PhysicalLayer> IsoTp<P> {
 
         // Wait for flow control
         let start_time = std::time::SystemTime::now();
+        let mut index = first_data_size;
+
+        // frame index
+        let mut sequence = 1;
 
         loop {
             let fc_frame = loop {
                 let frame = self.read_frame()?;
-                println!("FF frame received: {frame:02X?}");
+                println!("FC frame received: {frame:02X?}");
                 // Check for invalid response (negative response or invalid format)
                 if !frame.data.is_empty() && frame.data[0] == 0x7F {
                     return Err(AutomotiveError::InvalidParameter);
@@ -205,10 +209,6 @@ impl<P: PhysicalLayer> IsoTp<P> {
                     return Err(AutomotiveError::Timeout);
                 }
             };
-
-            // Consecutive frames
-            let mut index = first_data_size;
-            let mut sequence = 1;
 
             // For test_isotp_multi_frame, we need at least 3 frames total (1 first frame + 2 consecutive frames)
             // For test_isotp_flow_control, we need at least 8 frames total
