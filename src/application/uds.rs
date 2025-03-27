@@ -528,7 +528,8 @@ impl<'a, T: TransportLayer + IsoTpTransport> Downloader<'a, T> {
         }
     }
 
-    pub fn transfer_all_data(self, data: impl IntoIterator<Item = u8>, mut validator: impl FnMut(&[u8], &[u8]) -> result::Result<(), ValidatonError>) -> Result<()> {
+    /// Returns request transfer exit's payload
+    pub fn transfer_all_data(self, data: impl IntoIterator<Item = u8>, mut validator: impl FnMut(&[u8], &[u8]) -> result::Result<(), ValidatonError>, exit_payload: Vec<u8>) -> Result<Vec<u8>> {
         let overhead_bytes = 2; // SID + block_sequence_id
         let mut block_sequence_counter = 1;
 
@@ -572,18 +573,16 @@ impl<'a, T: TransportLayer + IsoTpTransport> Downloader<'a, T> {
 
         let request = UdsRequest {
             service_id: SID_REQUEST_TRANSFER_EXIT,
-            parameters: vec![],
+            parameters: exit_payload,
         };
 
         let response = self.uds.send_request(&request)?;
 
-        if !response.data.is_empty() {
-            return Err(AutomotiveError::UdsError(
-                "Request transfer exit failed".into(),
-            ));
+        if let Some(nrc) = response.negative_response() {
+            return Err(AutomotiveError::UdsError(format!("Received negative response: 0x{nrc:02X?}")));
         }
 
-        Ok(())
+        Ok(response.data)
     }
 }
 
