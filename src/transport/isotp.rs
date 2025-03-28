@@ -44,6 +44,9 @@ impl Default for IsoTpTiming {
 pub struct IsoTpConfig {
     pub tx_id: u32,
     pub rx_id: u32,
+    /// false: 11bit mode standard can id
+    /// true: 29 bit mode extended can id
+    pub extended_can_id: bool,
     pub block_size: u8,
     pub st_min: u8,
     pub address_mode: AddressMode,
@@ -65,6 +68,7 @@ impl Default for IsoTpConfig {
         Self {
             tx_id: 0,
             rx_id: 0,
+            extended_can_id: false,
             block_size: 0,
             st_min: 0,
             address_mode: AddressMode::Normal,
@@ -129,7 +133,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
                 frame_data.push(self.config.padding_value);
             }
         }
-        println!("Sending single frame: {frame_data:02X?}");
+        //println!("Sending single frame: {frame_data:02X?}");
         self.write_frame(&Frame {
             id: if self.config.address_mode == AddressMode::Mixed {
                 self.config.tx_id | (self.config.address_extension as u32)
@@ -138,7 +142,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
             },
             data: frame_data,
             timestamp: 0,
-            is_extended: false,
+            is_extended: self.config.extended_can_id,
             is_fd: false,
         })
     }
@@ -172,7 +176,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
             }
         }
 
-        println!("Sending FF frame: {frame_data:02X?}");
+        //println!("Sending FF frame: {frame_data:02X?}");
 
         // Send first frame
         self.write_frame(&Frame {
@@ -183,7 +187,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
             },
             data: frame_data,
             timestamp: 0,
-            is_extended: false,
+            is_extended: self.config.extended_can_id,
             is_fd: false,
         })?;
 
@@ -197,7 +201,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
         loop {
             let fc_frame = loop {
                 let frame = self.read_frame()?;
-                println!("FC frame received: {frame:02X?}");
+                //println!("FC frame received: {frame:02X?}");
                 // Check for invalid response (negative response or invalid format)
                 if !frame.data.is_empty() && frame.data[0] == 0x7F {
                     return Err(AutomotiveError::InvalidParameter);
@@ -256,7 +260,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
                     }
                 }
 
-                println!("Sending CF frame: {frame_data:02X?}");
+                //println!("Sending CF frame: {frame_data:02X?}");
 
                 // Send consecutive frame
                 self.write_frame(&Frame {
@@ -267,7 +271,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
                     },
                     data: frame_data,
                     timestamp: 0,
-                    is_extended: false,
+                    is_extended: self.config.extended_can_id,
                     is_fd: false,
                 })?;
 
@@ -327,7 +331,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
             },
             data: fc_data,
             timestamp: 0,
-            is_extended: false,
+            is_extended: self.config.extended_can_id,
             is_fd: false,
         })?;
 

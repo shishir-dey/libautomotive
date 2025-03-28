@@ -445,8 +445,6 @@ impl<T: TransportLayer + IsoTpTransport> Uds<T> {
         address.append_to_vec(&mut request_data);
         size.append_to_vec(&mut request_data);
 
-        dbg!(address, size);
-
         let request = UdsRequest {
             service_id: SID_REQUEST_DOWNLOAD,
             parameters: request_data,
@@ -469,7 +467,6 @@ impl<T: TransportLayer + IsoTpTransport> Uds<T> {
         }
 
         let max_num_block_len = &response.data[1..(1 + max_num_block_len_byte_count)];
-        println!("{:02X?}", max_num_block_len);
 
         assert!(max_num_block_len_byte_count <= u64::BITS as usize / 8);
         assert_eq!(max_num_block_len.len(), max_num_block_len_byte_count);
@@ -479,8 +476,6 @@ impl<T: TransportLayer + IsoTpTransport> Uds<T> {
             it.next().unwrap()
         });
         let max_block_size = u64::from_be_bytes(max_num_block_len_bytes);
-
-        println!("Request download done. bs: {max_block_size}");
 
         Ok(Downloader::new(max_block_size, self))
     }
@@ -526,6 +521,10 @@ impl<'a, T: TransportLayer + IsoTpTransport> Downloader<'a, T> {
             max_block_size,
             uds,
         }
+    }
+
+    fn block_size(&self) -> u64 {
+        self.max_block_size
     }
 
     /// Returns request transfer exit's payload
@@ -610,7 +609,7 @@ impl<T: TransportLayer + IsoTpTransport> ApplicationLayer for Uds<T> {
     }
 
     fn send_request(&mut self, request: &Self::Request) -> Result<Self::Response> {
-        println!("Sending: {:02x?}", request);
+        //println!("Sending: {:02x?}", request);
         if !self.is_open {
             return Err(AutomotiveError::NotInitialized);
         }
@@ -651,7 +650,7 @@ impl<T: TransportLayer + IsoTpTransport> ApplicationLayer for Uds<T> {
                 // Add a small delay to allow the mock to process the frame
                 std::thread::sleep(std::time::Duration::from_millis(10));
             } else {
-                println!("{:02X?}", response);
+                //println!("{:02X?}", response);
                 // Regular response
                 return Ok(UdsResponse {
                     service_id: response[0],
