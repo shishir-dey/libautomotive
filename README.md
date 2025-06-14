@@ -1,4 +1,10 @@
-# libautomotive
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/libautomotive-dark.svg" width="1280">
+  <source media="(prefers-color-scheme: light)" srcset="assets/libautomotive-light.svg" width="1280">
+  <img alt="libautomotive logo" src="assets/libautomotive-light.svg" width="1280">
+</picture>
+</div>
 
 A comprehensive Rust library for automotive protocol implementations, following the OSI layer model for clear separation of concerns. The library provides support for various automotive protocols including CAN, CAN-FD, ISO-TP, J1939, ISOBUS, UDS, and OBD-II.
 
