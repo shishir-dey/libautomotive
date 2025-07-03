@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use super::PhysicalLayer;
 use crate::error::{AutomotiveError, Result};
 use crate::types::{Config, Frame, Port};
@@ -68,91 +70,59 @@ const RX_QUEUE_SIZE: usize = 128;
 
 #[derive(Debug)]
 struct TxQueue {
-    frames: Vec<Frame>,
-    head: usize,
-    tail: usize,
-    count: usize,
+    frames: VecDeque<Frame>,
 }
 
 #[derive(Debug)]
 struct RxQueue {
-    frames: Vec<Frame>,
-    head: usize,
-    tail: usize,
-    count: usize,
+    frames: VecDeque<Frame>,
 }
 
 impl TxQueue {
     fn new() -> Self {
         Self {
-            frames: Vec::with_capacity(TX_QUEUE_SIZE),
-            head: 0,
-            tail: 0,
-            count: 0,
+            frames: VecDeque::with_capacity(TX_QUEUE_SIZE),
         }
     }
 
     fn push(&mut self, frame: Frame) -> Result<()> {
-        if self.count >= TX_QUEUE_SIZE {
+        if self.frames.len() >= TX_QUEUE_SIZE {
             return Err(AutomotiveError::BufferOverflow);
         }
-        if self.tail >= TX_QUEUE_SIZE {
-            self.tail = 0;
-        }
-        self.frames.push(frame);
-        self.count += 1;
-        self.tail += 1;
+        self.frames.push_back(frame);
         Ok(())
     }
 
     fn pop(&mut self) -> Option<Frame> {
-        if self.count == 0 {
-            return None;
-        }
-        if self.head >= TX_QUEUE_SIZE {
-            self.head = 0;
-        }
-        let frame = self.frames.remove(self.head);
-        self.count -= 1;
-        self.head += 1;
-        Some(frame)
+        self.frames.pop_front()
+    }
+
+    fn len(&self) -> usize {
+        self.frames.len()
     }
 }
 
 impl RxQueue {
     fn new() -> Self {
         Self {
-            frames: Vec::with_capacity(RX_QUEUE_SIZE),
-            head: 0,
-            tail: 0,
-            count: 0,
+            frames: VecDeque::with_capacity(RX_QUEUE_SIZE),
         }
     }
 
     fn push(&mut self, frame: Frame) -> Result<()> {
-        if self.count >= RX_QUEUE_SIZE {
+        if self.frames.len() >= TX_QUEUE_SIZE {
             return Err(AutomotiveError::BufferOverflow);
         }
-        if self.tail >= RX_QUEUE_SIZE {
-            self.tail = 0;
-        }
-        self.frames.push(frame);
-        self.count += 1;
-        self.tail += 1;
+        self.frames.push_back(frame);
         Ok(())
     }
 
     fn pop(&mut self) -> Option<Frame> {
-        if self.count == 0 {
-            return None;
-        }
-        if self.head >= RX_QUEUE_SIZE {
-            self.head = 0;
-        }
-        let frame = self.frames.remove(self.head);
-        self.count -= 1;
-        self.head += 1;
-        Some(frame)
+        self.frames.pop_front()
+    }
+
+    fn len(&self) -> usize {
+        self.frames.len()
     }
 }
 
@@ -200,22 +170,22 @@ impl<P: Port> Can<P> {
 
     /// Get number of frames pending in TX queue
     pub fn tx_pending(&self) -> usize {
-        self.tx_queue.count
+        self.tx_queue.len()
     }
 
     /// Get number of frames pending in RX queue
     pub fn rx_pending(&self) -> usize {
-        self.rx_queue.count
+        self.rx_queue.len()
     }
 
     /// Get space available in TX queue
     pub fn tx_space(&self) -> usize {
-        TX_QUEUE_SIZE - self.tx_queue.count
+        TX_QUEUE_SIZE - self.tx_queue.len()
     }
 
     /// Get space available in RX queue  
     pub fn rx_space(&self) -> usize {
-        RX_QUEUE_SIZE - self.rx_queue.count
+        RX_QUEUE_SIZE - self.rx_queue.len()
     }
 }
 
