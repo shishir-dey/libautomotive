@@ -15,31 +15,95 @@ use crate::types::Frame;
 
 mod uds_tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    /// Helper function to wrap response data in ISO-TP Single Frame format
+    fn wrap_isotp_single_frame(data: Vec<u8>) -> Vec<u8> {
+        let mut frame_data = vec![data.len() as u8]; // PCI byte with length
+        frame_data.extend(data);
+        frame_data
+    }
 
     fn create_mock_uds() -> Uds<IsoTp<MockPhysical>> {
-        let mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
-            let service_id = frame.data[0]; // Service ID is the first byte
+        // Flag to track if we're waiting for consecutive frames after sending FC
+        let waiting_for_cf = Arc::new(AtomicBool::new(false));
+        let waiting_for_cf_clone = Arc::clone(&waiting_for_cf);
+
+        let mock = MockPhysical::new(Some(Box::new(move |frame: &Frame| {
+            // Check for ISO-TP First Frame (multi-frame request)
+            // First Frame PCI: 0x1X where X is high nibble of length
+            if !frame.data.is_empty() && (frame.data[0] & 0xF0) == 0x10 {
+                // This is a First Frame - respond with Flow Control
+                // FC format: [0x30, block_size, st_min]
+                waiting_for_cf_clone.store(true, Ordering::SeqCst);
+                return Ok(Frame {
+                    id: frame.id,
+                    data: vec![0x30, 0x00, 0x00], // Flow Control: CTS, no block limit, no delay
+                    timestamp: 0,
+                    is_extended: false,
+                    is_fd: false,
+                });
+            }
+
+            // Check for Consecutive Frame
+            if !frame.data.is_empty() && (frame.data[0] & 0xF0) == 0x20 {
+                // This is a Consecutive Frame - we need to assemble the full message
+                // For simplicity, just return a positive response for memory operations
+                if waiting_for_cf_clone.load(Ordering::SeqCst) {
+                    waiting_for_cf_clone.store(false, Ordering::SeqCst);
+                    // Return a positive response for ReadMemoryByAddress (0x23 -> 0x63)
+                    return Ok(Frame {
+                        id: frame.id,
+                        data: wrap_isotp_single_frame(vec![0x63, 0x01, 0x02, 0x03]),
+                        timestamp: 0,
+                        is_extended: false,
+                        is_fd: false,
+                    });
+                }
+            }
+
+            // ISO-TP Single Frame: first byte is PCI (0x0X where X is length)
+            // Skip the PCI byte to get the actual service ID
+            let service_id = if !frame.data.is_empty() && (frame.data[0] & 0xF0) == 0x00 {
+                // Single Frame - service ID is at index 1
+                if frame.data.len() > 1 { frame.data[1] } else { 0 }
+            } else {
+                // Fallback for non-ISO-TP frames
+                frame.data[0]
+            };
+
             let response_data = match service_id {
                 SID_DIAGNOSTIC_SESSION_CONTROL => {
-                    vec![0x50, frame.data[1]] // Positive response to session control
+                    let sub_func = if frame.data.len() > 2 { frame.data[2] } else { 0x01 };
+                    wrap_isotp_single_frame(vec![0x50, sub_func]) // Positive response to session control
                 }
                 SID_TESTER_PRESENT => {
-                    vec![0x7E, 0x00] // Positive response to tester present
+                    wrap_isotp_single_frame(vec![0x7E, 0x00]) // Positive response to tester present
                 }
                 SID_ROUTINE_CONTROL => {
-                    vec![0x71, frame.data[1], frame.data[2], frame.data[3]] // Positive response to routine control
+                    let (b1, b2, b3) = if frame.data.len() > 4 {
+                        (frame.data[2], frame.data[3], frame.data[4])
+                    } else {
+                        (0x01, 0x00, 0x00)
+                    };
+                    wrap_isotp_single_frame(vec![0x71, b1, b2, b3]) // Positive response to routine control
                 }
                 SID_INPUT_OUTPUT_CONTROL_BY_ID => {
-                    vec![0x2F, frame.data[1], frame.data[2], frame.data[3], 0x00]
-                    // Positive response to IO control
+                    let (b1, b2, b3) = if frame.data.len() > 4 {
+                        (frame.data[2], frame.data[3], frame.data[4])
+                    } else {
+                        (0x00, 0x00, 0x00)
+                    };
+                    wrap_isotp_single_frame(vec![0x6F, b1, b2, b3, 0x00]) // Positive response to IO control
                 }
                 SID_READ_MEMORY_BY_ADDRESS => {
-                    vec![0x63, 0x01, 0x02, 0x03] // Sample memory data
+                    wrap_isotp_single_frame(vec![0x63, 0x01, 0x02, 0x03]) // Sample memory data
                 }
                 SID_WRITE_MEMORY_BY_ADDRESS => {
-                    vec![0x7F, service_id, 0x31] // Negative response
+                    wrap_isotp_single_frame(vec![0x7F, service_id, 0x31]) // Negative response
                 }
-                _ => vec![0x7F, service_id, 0x11], // Service not supported
+                _ => wrap_isotp_single_frame(vec![0x7F, service_id, 0x11]), // Service not supported
             };
             Ok(Frame {
                 id: frame.id,
@@ -136,12 +200,21 @@ mod uds_tests {
     #[test]
     fn test_uds_response_pending() {
         let mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
-            let service_id = frame.data[0];
+            // Parse ISO-TP Single Frame - service ID is at index 1 (after PCI byte)
+            let service_id = if !frame.data.is_empty() && (frame.data[0] & 0xF0) == 0x00 {
+                if frame.data.len() > 1 { frame.data[1] } else { 0 }
+            } else {
+                frame.data[0]
+            };
 
-            // Return a positive response
+            // Return a positive response wrapped in ISO-TP Single Frame format
+            let response = vec![service_id + 0x40];
+            let mut isotp_response = vec![response.len() as u8];
+            isotp_response.extend(response);
+
             Ok(Frame {
                 id: frame.id,
-                data: vec![service_id + 0x40], // Positive response
+                data: isotp_response,
                 timestamp: 0,
                 is_extended: false,
                 is_fd: false,
@@ -177,43 +250,56 @@ mod uds_tests {
 mod obd_tests {
     use super::*;
 
+    /// Helper function to wrap response data in ISO-TP Single Frame format
+    fn wrap_isotp_single_frame(data: Vec<u8>) -> Vec<u8> {
+        let mut frame_data = vec![data.len() as u8]; // PCI byte with length
+        frame_data.extend(data);
+        frame_data
+    }
+
     fn create_mock_obd() -> Obd<IsoTp<MockPhysical>> {
         let mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
-            let mode = frame.data[0]; // Mode is the first byte
+            // Parse ISO-TP Single Frame - mode is at index 1 (after PCI byte)
+            let mode = if !frame.data.is_empty() && (frame.data[0] & 0xF0) == 0x00 {
+                if frame.data.len() > 1 { frame.data[1] } else { 0 }
+            } else {
+                frame.data[0]
+            };
+
             let response_data = match mode {
                 0x01 => {
                     // Mode 1 - Current Data
-                    let pid = frame.data[1];
+                    let pid = if frame.data.len() > 2 { frame.data[2] } else { 0 };
                     match pid {
                         PID_ENGINE_RPM => {
-                            vec![0x41, PID_ENGINE_RPM, 0x1B, 0x56] // 1750 RPM
+                            wrap_isotp_single_frame(vec![0x41, PID_ENGINE_RPM, 0x1B, 0x56]) // 1750 RPM
                         }
                         PID_VEHICLE_SPEED => {
-                            vec![0x41, PID_VEHICLE_SPEED, 0x32] // 50 km/h
+                            wrap_isotp_single_frame(vec![0x41, PID_VEHICLE_SPEED, 0x32]) // 50 km/h
                         }
-                        _ => vec![0x41, pid, 0x00], // Default response
+                        _ => wrap_isotp_single_frame(vec![0x41, pid, 0x00]), // Default response
                     }
                 }
                 0x03 => {
                     // Mode 3 - Show stored DTCs
-                    vec![
+                    wrap_isotp_single_frame(vec![
                         0x43, 0x02, // 2 DTCs
                         0x01, 0x33, // First DTC: P0133
                         0x02, 0x44, // Second DTC: P0244
-                    ]
+                    ])
                 }
                 0x02 => {
                     // Mode 2 - Freeze frame data
-                    let pid = frame.data[1];
-                    let frame_num = frame.data[2];
+                    let pid = if frame.data.len() > 2 { frame.data[2] } else { 0 };
+                    let frame_num = if frame.data.len() > 3 { frame.data[3] } else { 0 };
                     match pid {
                         PID_ENGINE_RPM => {
-                            vec![0x42, pid, frame_num, 0x1B, 0x56] // 1750 RPM (same as current data)
+                            wrap_isotp_single_frame(vec![0x42, pid, frame_num, 0x1B, 0x56]) // 1750 RPM
                         }
-                        _ => vec![0x42, pid, frame_num, 0x00],
+                        _ => wrap_isotp_single_frame(vec![0x42, pid, frame_num, 0x00]),
                     }
                 }
-                _ => vec![0x7F, mode, 0x11], // Service not supported
+                _ => wrap_isotp_single_frame(vec![0x7F, mode, 0x11]), // Service not supported
             };
 
             Ok(Frame {
@@ -288,10 +374,15 @@ mod obd_tests {
 
         // Create a mock that returns a valid response for freeze frame data
         let mock = MockPhysical::new(Some(Box::new(|frame: &Frame| {
-            // Always return a valid response for engine RPM
+            // Return ISO-TP formatted response for engine RPM freeze frame
+            // Format: [PCI, Mode+0x40, PID, FrameNum, DataA, DataB]
+            let response = vec![0x42, PID_ENGINE_RPM, 0x00, 0x1B, 0x56]; // 1750 RPM
+            let mut isotp_response = vec![response.len() as u8];
+            isotp_response.extend(response);
+
             Ok(Frame {
                 id: frame.id,
-                data: vec![0x42, PID_ENGINE_RPM, 0x00, 0x1B, 0x56], // 1750 RPM
+                data: isotp_response,
                 timestamp: 0,
                 is_extended: false,
                 is_fd: false,
