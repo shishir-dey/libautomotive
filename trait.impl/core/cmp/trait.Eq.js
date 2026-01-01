@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["libautomotive",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/cmp/trait.Eq.html\" title=\"trait core::cmp::Eq\">Eq</a> for <a class=\"enum\" href=\"libautomotive/data_link/enum.BusStatus.html\" title=\"enum libautomotive::data_link::BusStatus\">BusStatus</a>"],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/cmp/trait.Eq.html\" title=\"trait core::cmp::Eq\">Eq</a> for <a class=\"enum\" href=\"libautomotive/data_link/enum.CanErrorType.html\" title=\"enum libautomotive::data_link::CanErrorType\">CanErrorType</a>"],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/cmp/trait.Eq.html\" title=\"trait core::cmp::Eq\">Eq</a> for <a class=\"enum\" href=\"libautomotive/data_link/enum.ErrorLocation.html\" title=\"enum libautomotive::data_link::ErrorLocation\">ErrorLocation</a>"],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/cmp/trait.Eq.html\" title=\"trait core::cmp::Eq\">Eq</a> for <a class=\"enum\" href=\"libautomotive/data_link/enum.FrameType.html\" title=\"enum libautomotive::data_link::FrameType\">FrameType</a>"],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/cmp/trait.Eq.html\" title=\"trait core::cmp::Eq\">Eq</a> for <a class=\"struct\" href=\"libautomotive/types/struct.Address.html\" title=\"struct libautomotive::types::Address\">Address</a>"]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[1382]}

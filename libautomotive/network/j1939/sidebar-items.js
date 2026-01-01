@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["J1939","J1939Config","J1939Message"]};

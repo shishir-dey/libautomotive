@@ -1,0 +1,76 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="libautomotive"><title>libautomotive - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="libautomotive" data-themes="" data-resource-suffix="" data-rustdoc-version="1.92.0 (ded5c06cf 2025-12-08)" data-channel="1.92.0" data-search-js="search-d69d8955.js" data-stringdex-js="stringdex-c3e638e9.js" data-settings-js="settings-c38705f0.js" ><script src="../static.files/storage-e2aeef58.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-ce535bd0.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate libautomotive</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../libautomotive/index.html">libautomotive</a><span class="version">0.1.2</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#libautomotive" title="libautomotive">libautomotive</a><ul><li><a href="#architecture" title="Architecture">Architecture</a></li><li><a href="#features" title="Features">Features</a></li><li><a href="#example" title="Example">Example</a></li><li><a href="#credits-and-acknowledgments" title="Credits and Acknowledgments">Credits and Acknowledgments</a></li></ul></li></ul><h3><a href="#reexports">Crate Items</a></h3><ul class="block"><li><a href="#reexports" title="Re-exports">Re-exports</a></li><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#constants" title="Constants">Constants</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><h1>Crate <span>libautomotive</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/libautomotive/lib.rs.html#1-117">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="libautomotive"><a class="doc-anchor" href="#libautomotive">§</a>libautomotive</h2>
+<p><code>libautomotive</code> is a comprehensive Rust library for automotive protocol implementations,
+following the OSI layer model for clear separation of concerns. It provides support for
+various automotive protocols including CAN, CAN-FD, ISO-TP, J1939, UDS, and OBD-II.</p>
+<h3 id="architecture"><a class="doc-anchor" href="#architecture">§</a>Architecture</h3>
+<p>The library is organized according to the OSI layer model:</p>
+<ul>
+<li>Physical Layer: CAN and CAN-FD implementations</li>
+<li>Data Link Layer: Raw CAN frame handling</li>
+<li>Network Layer: J1939 protocol implementation</li>
+<li>Transport Layer: ISO-TP (ISO 15765-2) implementation</li>
+<li>Application Layer: UDS (ISO 14229) and OBD-II implementations</li>
+</ul>
+<h3 id="features"><a class="doc-anchor" href="#features">§</a>Features</h3>
+<ul>
+<li>Complete automotive protocol stack</li>
+<li>Modular and extensible design</li>
+<li>High-performance implementations</li>
+<li>Strong type safety and error handling</li>
+<li>Easy-to-use abstractions</li>
+</ul>
+<h3 id="example"><a class="doc-anchor" href="#example">§</a>Example</h3><div class="example-wrap"><pre class="language-text"><code># Complete usage example (conceptual, not actual code)
+use libautomotive::physical::can;
+use libautomotive::transport::isotp;
+use libautomotive::application::uds;
+
+# 1. Set up physical layer (CAN)
+let can_config = can::CustomConfig {
+    bitrate: 500_000,
+    sample_point: 0.75
+};
+let mut can = can::CustomInterface::new(can_config);
+can.open();
+
+# 2. Set up transport layer (ISO-TP)
+let isotp_config = isotp::CustomConfig {
+    tx_id: 0x7E0,
+    rx_id: 0x7E8,
+    block_size: 8,
+    st_min: 10
+};
+let mut isotp = isotp::CustomInterface::new_with_can(isotp_config, can);
+isotp.open();
+
+# 3. Set up application layer (UDS)
+let uds_config = uds::CustomConfig {
+    timeout_ms: 1000,
+    p2_timeout_ms: 5000
+};
+let mut uds = uds::CustomInterface::new_with_isotp(uds_config, isotp);
+uds.open();
+
+# 4. Use UDS services
+uds.change_session(uds::SESSION_EXTENDED);
+let vin = uds.read_data_by_id(0xF190);  // Read Vehicle Identification Number</code></pre></div><h3 id="credits-and-acknowledgments"><a class="doc-anchor" href="#credits-and-acknowledgments">§</a>Credits and Acknowledgments</h3>
+<p>This library draws inspiration from and acknowledges the following open-source projects:</p>
+<ul>
+<li><a href="https://github.com/bri3d/esp32-isotp-ble-bridge">esp32-isotp-ble-bridge</a> - ESP32-IDF based BLE&lt;-&gt;ISO-TP bridge</li>
+<li><a href="https://github.com/DanielMartensson/Open-SAE-J1939">Open-SAE-J1939</a> - Open source SAE J1939 implementation</li>
+<li><a href="https://github.com/openxc/uds-c">uds-c</a> - Unified Diagnostic Services (UDS) C library</li>
+<li><a href="https://github.com/ejvaughan/obdii">obdii</a> - OBD-II diagnostic protocol implementation</li>
+<li><a href="https://github.com/kentindell/canis-can-sdk">canis-can-sdk</a> - CAN protocol stack implementation</li>
+<li><a href="https://github.com/Open-Agriculture/AgIsoStack-plus-plus">AgIsoStack++</a> - Open-source C++ ISOBUS library</li>
+<li><a href="https://github.com/open-LIN/open-LIN-c">open-LIN-c</a> - Implementation of Local Interconnect Network in C</li>
+<li><a href="https://github.com/doip/doip-library">doip-library</a> - Diagnostic over IP (DoIP) protocol implementation</li>
+</ul>
+<p>These projects have provided valuable insights and reference implementations for various
+automotive protocols. We are grateful to their authors and contributors for making their
+work available to the community.</p>
+</div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><dl class="item-table reexports"><dt id="reexport.obdii"><code>pub use application::<a class="mod" href="application/obdii/index.html" title="mod libautomotive::application::obdii">obdii</a>;</code></dt><dt id="reexport.uds"><code>pub use application::<a class="mod" href="application/uds/index.html" title="mod libautomotive::application::uds">uds</a>;</code></dt><dt id="reexport.j1939"><code>pub use network::<a class="mod" href="network/j1939/index.html" title="mod libautomotive::network::j1939">j1939</a>;</code></dt><dt id="reexport.can"><code>pub use physical::<a class="mod" href="physical/can/index.html" title="mod libautomotive::physical::can">can</a>;</code></dt><dt id="reexport.canfd"><code>pub use physical::<a class="mod" href="physical/canfd/index.html" title="mod libautomotive::physical::canfd">canfd</a>;</code></dt><dt id="reexport.isotp"><code>pub use transport::<a class="mod" href="transport/isotp/index.html" title="mod libautomotive::transport::isotp">isotp</a>;</code></dt></dl><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="application/index.html" title="mod libautomotive::application">application</a></dt><dd>Application layer protocols including UDS and OBD-II
+Application layer implementations for automotive protocols.</dd><dt><a class="mod" href="data_link/index.html" title="mod libautomotive::data_link">data_<wbr>link</a></dt><dd>Data link layer handling raw CAN frames</dd><dt><a class="mod" href="error/index.html" title="mod libautomotive::error">error</a></dt><dd>Common error types and error handling functionality
+Error types for the automotive protocol stack.</dd><dt><a class="mod" href="network/index.html" title="mod libautomotive::network">network</a></dt><dd>Network layer implementing J1939 protocol
+Network layer implementations for automotive protocols.</dd><dt><a class="mod" href="physical/index.html" title="mod libautomotive::physical">physical</a></dt><dd>Physical layer implementations for CAN and CAN-FD
+Physical layer implementations for automotive protocols.</dd><dt><a class="mod" href="transport/index.html" title="mod libautomotive::transport">transport</a></dt><dd>Transport layer implementing ISO-TP (ISO 15765-2)
+Transport layer implementations for automotive protocols.</dd><dt><a class="mod" href="types/index.html" title="mod libautomotive::types">types</a></dt><dd>Common types used across the library
+Common types used throughout the automotive protocol stack.</dd></dl><h2 id="constants" class="section-header">Constants<a href="#constants" class="anchor">§</a></h2><dl class="item-table"><dt><a class="constant" href="constant.VERSION.html" title="constant libautomotive::VERSION">VERSION</a></dt><dd>Current version of the library</dd></dl><script type="text/json" id="notable-traits-data">{"&<Vec<T, A> as Index<I>>::Output":"<h3>Notable traits for <code><a class=\"struct\" href=\"https://doc.rust-lang.org/1.92.0/alloc/vec/struct.Vec.html\" title=\"struct alloc::vec::Vec\">Vec</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.92.0/std/primitive.u8.html\">u8</a>, A&gt;</code></h3><pre><code><div class=\"where\">impl&lt;A&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/std/io/trait.Write.html\" title=\"trait std::io::Write\">Write</a> for <a class=\"struct\" href=\"https://doc.rust-lang.org/1.92.0/alloc/vec/struct.Vec.html\" title=\"struct alloc::vec::Vec\">Vec</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.92.0/std/primitive.u8.html\">u8</a>, A&gt;<div class=\"where\">where\n    A: <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/alloc/trait.Allocator.html\" title=\"trait core::alloc::Allocator\">Allocator</a>,</div></div>","&mut <Vec<T, A> as Index<I>>::Output":"<h3>Notable traits for <code><a class=\"struct\" href=\"https://doc.rust-lang.org/1.92.0/alloc/vec/struct.Vec.html\" title=\"struct alloc::vec::Vec\">Vec</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.92.0/std/primitive.u8.html\">u8</a>, A&gt;</code></h3><pre><code><div class=\"where\">impl&lt;A&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/std/io/trait.Write.html\" title=\"trait std::io::Write\">Write</a> for <a class=\"struct\" href=\"https://doc.rust-lang.org/1.92.0/alloc/vec/struct.Vec.html\" title=\"struct alloc::vec::Vec\">Vec</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.92.0/std/primitive.u8.html\">u8</a>, A&gt;<div class=\"where\">where\n    A: <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/alloc/trait.Allocator.html\" title=\"trait core::alloc::Allocator\">Allocator</a>,</div></div>","<Vec<T, A> as IntoIterator>::IntoIter":"<h3>Notable traits for <code><a class=\"struct\" href=\"https://doc.rust-lang.org/1.92.0/alloc/vec/struct.Vec.html\" title=\"struct alloc::vec::Vec\">Vec</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.92.0/std/primitive.u8.html\">u8</a>, A&gt;</code></h3><pre><code><div class=\"where\">impl&lt;A&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/std/io/trait.Write.html\" title=\"trait std::io::Write\">Write</a> for <a class=\"struct\" href=\"https://doc.rust-lang.org/1.92.0/alloc/vec/struct.Vec.html\" title=\"struct alloc::vec::Vec\">Vec</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.92.0/std/primitive.u8.html\">u8</a>, A&gt;<div class=\"where\">where\n    A: <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/alloc/trait.Allocator.html\" title=\"trait core::alloc::Allocator\">Allocator</a>,</div></div>","Vec<u8>":"<h3>Notable traits for <code><a class=\"struct\" href=\"https://doc.rust-lang.org/1.92.0/alloc/vec/struct.Vec.html\" title=\"struct alloc::vec::Vec\">Vec</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.92.0/std/primitive.u8.html\">u8</a>, A&gt;</code></h3><pre><code><div class=\"where\">impl&lt;A&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/std/io/trait.Write.html\" title=\"trait std::io::Write\">Write</a> for <a class=\"struct\" href=\"https://doc.rust-lang.org/1.92.0/alloc/vec/struct.Vec.html\" title=\"struct alloc::vec::Vec\">Vec</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.92.0/std/primitive.u8.html\">u8</a>, A&gt;<div class=\"where\">where\n    A: <a class=\"trait\" href=\"https://doc.rust-lang.org/1.92.0/core/alloc/trait.Allocator.html\" title=\"trait core::alloc::Allocator\">Allocator</a>,</div></div>"}</script></section></div></main></body></html>

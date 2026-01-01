@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Application layer protocols including UDS and OBD-II Application layer implementations for automotive protocols."><title>libautomotive::application - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="libautomotive" data-themes="" data-resource-suffix="" data-rustdoc-version="1.92.0 (ded5c06cf 2025-12-08)" data-channel="1.92.0" data-search-js="search-d69d8955.js" data-stringdex-js="stringdex-c3e638e9.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-ce535bd0.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module application</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../libautomotive/index.html">libautomotive</a><span class="version">0.1.2</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module application</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#uds-unified-diagnostic-services" title="UDS (Unified Diagnostic Services)">UDS (Unified Diagnostic Services)</a></li><li><a href="#obd-ii-on-board-diagnostics" title="OBD-II (On-Board Diagnostics)">OBD-II (On-Board Diagnostics)</a></li><li><a href="#examples" title="Examples">Examples</a></li></ul><h3><a href="#reexports">Module Items</a></h3><ul class="block"><li><a href="#reexports" title="Re-exports">Re-exports</a></li><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#traits" title="Traits">Traits</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate libautomotive</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">libautomotive</a></div><h1>Module <span>application</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/libautomotive/application/mod.rs.html#1-89">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Application layer protocols including UDS and OBD-II
+Application layer implementations for automotive protocols.</p>
+<p>This module provides implementations for application layer protocols:</p>
+<ul>
+<li>UDS (ISO 14229-1) - Unified Diagnostic Services</li>
+<li>OBD-II (ISO 15031) - On-Board Diagnostics</li>
+</ul>
+<p>The application layer provides high-level diagnostic and monitoring services:</p>
+<h3 id="uds-unified-diagnostic-services"><a class="doc-anchor" href="#uds-unified-diagnostic-services">§</a>UDS (Unified Diagnostic Services)</h3>
+<ul>
+<li>ECU programming and configuration</li>
+<li>Diagnostic trouble code (DTC) management</li>
+<li>Data reading and writing</li>
+<li>Routine control</li>
+<li>Security access</li>
+</ul>
+<h3 id="obd-ii-on-board-diagnostics"><a class="doc-anchor" href="#obd-ii-on-board-diagnostics">§</a>OBD-II (On-Board Diagnostics)</h3>
+<ul>
+<li>Emissions-related diagnostics</li>
+<li>Real-time parameter monitoring</li>
+<li>Freeze frame data access</li>
+<li>Standard diagnostic trouble codes</li>
+<li>Mode-based service requests</li>
+</ul>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2><div class="example-wrap"><pre class="language-text"><code># Example usage of the application layer (conceptual, not actual code)
+# UDS configuration:
+let uds_config = uds::CustomConfig {
+    timeout_ms: 1000,             // 1 second timeout
+    p2_timeout_ms: 5000,          // 5 second P2 timeout
+    tester_present_interval_ms: 2000  // Send tester present every 2 seconds
+};
+
+# Create a UDS instance
+let mut uds = uds::CustomInterface::new(uds_config);
+uds.open();
+
+# Change diagnostic session
+uds.change_session(uds::SESSION_PROGRAMMING);
+
+# Read ECU data
+let vin_data = uds.read_data_by_id(0xF190); // Vehicle Identification Number
+
+# Write ECU data
+uds.write_data_by_id(0xF198, &amp;[0x01, 0x02, 0x03]);
+
+# OBD-II configuration:
+let obd_config = obdii::CustomConfig {
+    timeout_ms: 1000,    // 1 second timeout
+    auto_format: true    // Auto-format responses
+};
+
+# Create an OBD-II instance
+let mut obd = obdii::CustomInterface::new(obd_config);
+obd.open();
+
+# Read engine RPM
+let engine_rpm = obd.read_sensor(0x0C); // PID for engine RPM
+
+# Read diagnostic trouble codes
+let dtcs = obd.read_dtc();</code></pre></div></div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><dl class="item-table reexports"><dt id="reexport.Obd"><code>pub use obdii::<a class="struct" href="obdii/struct.Obd.html" title="struct libautomotive::application::obdii::Obd">Obd</a>;</code></dt><dt id="reexport.Uds"><code>pub use uds::<a class="struct" href="uds/struct.Uds.html" title="struct libautomotive::application::uds::Uds">Uds</a>;</code></dt></dl><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="obdii/index.html" title="mod libautomotive::application::obdii">obdii</a></dt><dt><a class="mod" href="uds/index.html" title="mod libautomotive::application::uds">uds</a></dt></dl><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><dl class="item-table"><dt><a class="trait" href="trait.ApplicationLayer.html" title="trait libautomotive::application::ApplicationLayer">Application<wbr>Layer</a></dt><dd>Application layer trait that must be implemented by UDS and OBD-II</dd></dl></section></div></main></body></html>

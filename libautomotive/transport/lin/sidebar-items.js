@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["LIN_BREAK_BYTE","LIN_ID_MASK","LIN_P0_FLAG","LIN_P1_FLAG","LIN_SYNC_BYTE"],"enum":["LinFrameSlot","LinFrameType"],"struct":["Lin","LinConfig"]};

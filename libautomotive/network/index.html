@@ -1,0 +1,44 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Network layer implementing J1939 protocol Network layer implementations for automotive protocols."><title>libautomotive::network - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="libautomotive" data-themes="" data-resource-suffix="" data-rustdoc-version="1.92.0 (ded5c06cf 2025-12-08)" data-channel="1.92.0" data-search-js="search-d69d8955.js" data-stringdex-js="stringdex-c3e638e9.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-ce535bd0.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module network</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../libautomotive/index.html">libautomotive</a><span class="version">0.1.2</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module network</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#examples" title="Examples">Examples</a></li></ul><h3><a href="#modules">Module Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#traits" title="Traits">Traits</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate libautomotive</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">libautomotive</a></div><h1>Module <span>network</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/libautomotive/network/mod.rs.html#1-67">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Network layer implementing J1939 protocol
+Network layer implementations for automotive protocols.</p>
+<p>This module provides implementations for network layer protocols, primarily:</p>
+<ul>
+<li>J1939 (SAE J1939) - A higher-layer protocol for commercial vehicles</li>
+</ul>
+<p>The network layer is responsible for:</p>
+<ul>
+<li>Message routing and addressing</li>
+<li>Network management</li>
+<li>Message prioritization</li>
+<li>Protocol-specific addressing schemes</li>
+</ul>
+<p>The J1939 protocol is widely used in commercial vehicles and provides:</p>
+<ul>
+<li>Parameter Group Numbers (PGN) based addressing</li>
+<li>Multi-packet message transport</li>
+<li>Network management functions</li>
+<li>Standardized diagnostic messages</li>
+</ul>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2><div class="example-wrap"><pre class="language-text"><code># Example usage of the network layer (conceptual, not actual code)
+# J1939 configuration:
+let j1939_config = j1939::CustomConfig {
+    name: 0x0000AABBCCDDEEFF, // ECU NAME (64-bit identifier)
+    address: 0x42,            // Preferred source address
+    priority: 6               // Default priority for messages
+};
+
+# Create a J1939 instance and open the connection
+let mut j1939 = j1939::CustomInterface::new(j1939_config);
+j1939.open();
+
+# Claim a network address
+j1939.claim_address(0x42);
+
+# Send a J1939 message
+let pgn = 0x00EF00;     // Example PGN (Electronic Engine Controller)
+let dest_addr = 0xFF;   // Broadcast address
+let data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+
+j1939.send_message(pgn, dest_addr, &amp;data);
+
+# Receive J1939 messages
+let msg = j1939.receive_message();</code></pre></div></div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="j1939/index.html" title="mod libautomotive::network::j1939">j1939</a></dt></dl><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><dl class="item-table"><dt><a class="trait" href="trait.NetworkLayer.html" title="trait libautomotive::network::NetworkLayer">Network<wbr>Layer</a></dt><dd>Network layer trait that must be implemented by J1939</dd></dl></section></div></main></body></html>

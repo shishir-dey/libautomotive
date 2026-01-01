@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BusStatus","CanErrorType","ErrorLocation","FrameType"],"struct":["CanError"],"trait":["DataLinkLayer"]};
