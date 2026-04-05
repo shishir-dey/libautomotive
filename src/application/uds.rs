@@ -1,7 +1,7 @@
 use super::ApplicationLayer;
 use crate::error::{AutomotiveError, Result};
-use crate::transport::TransportLayer;
-use crate::types::{Config, Frame};
+use crate::transport::IsoTpTransport;
+use crate::types::Config;
 
 // UDS Service IDs
 pub const SID_DIAGNOSTIC_SESSION_CONTROL: u8 = 0x10;
@@ -130,7 +130,7 @@ impl Default for UdsConfig {
 }
 
 /// UDS Implementation
-pub struct Uds<T: TransportLayer> {
+pub struct Uds<T: IsoTpTransport> {
     config: UdsConfig,
     transport: T,
     pub status: SessionStatus, // Make public for testing
@@ -138,7 +138,7 @@ pub struct Uds<T: TransportLayer> {
     handling_session_timing: bool, // Flag to prevent recursive session timing handling
 }
 
-impl<T: TransportLayer> Uds<T> {
+impl<T: IsoTpTransport> Uds<T> {
     /// Creates a new UDS instance with the given transport layer
     pub fn with_transport(config: UdsConfig, transport: T) -> Self {
         Self {
@@ -242,13 +242,7 @@ impl<T: TransportLayer> Uds<T> {
         let mut data = vec![request.service_id];
         data.extend_from_slice(&request.parameters);
 
-        self.transport.write_frame(&Frame {
-            id: 0,
-            data,
-            timestamp: 0,
-            is_extended: false,
-            is_fd: false,
-        })?;
+        self.transport.send(&data)?;
 
         // Set the flag regardless of response as we're using suppress positive response
         self.status.tester_present_sent = true;
@@ -419,7 +413,7 @@ impl<T: TransportLayer> Uds<T> {
     }
 }
 
-impl<T: TransportLayer> ApplicationLayer for Uds<T> {
+impl<T: IsoTpTransport> ApplicationLayer for Uds<T> {
     type Config = UdsConfig;
     type Request = UdsRequest;
     type Response = UdsResponse;
@@ -449,30 +443,24 @@ impl<T: TransportLayer> ApplicationLayer for Uds<T> {
         let mut data = vec![request.service_id];
         data.extend_from_slice(&request.parameters);
 
-        // Send the request
-        self.transport.write_frame(&Frame {
-            id: 0,
-            data: data.clone(),
-            timestamp: 0,
-            is_extended: false,
-            is_fd: false,
-        })?;
+        // Send the request using ISO-TP segmentation
+        self.transport.send(&data)?;
 
         // Handle response pending (NRC 0x78)
         let mut retry_count = 0;
         let max_retries = 5; // Limit retries to avoid infinite loop
 
         loop {
-            let response = self.transport.read_frame()?;
-            if response.data.is_empty() {
+            let response_data = self.transport.receive()?;
+            if response_data.is_empty() {
                 return Err(AutomotiveError::InvalidParameter);
             }
 
             // Check for response pending (0x7F service_id 0x78)
-            if response.data.len() >= 3
-                && response.data[0] == 0x7F
-                && response.data[1] == request.service_id
-                && response.data[2] == NRC_RESPONSE_PENDING
+            if response_data.len() >= 3
+                && response_data[0] == 0x7F
+                && response_data[1] == request.service_id
+                && response_data[2] == NRC_RESPONSE_PENDING
             {
                 retry_count += 1;
                 if retry_count >= max_retries {
@@ -482,22 +470,16 @@ impl<T: TransportLayer> ApplicationLayer for Uds<T> {
                 // Wait a bit before retrying
                 std::thread::sleep(std::time::Duration::from_millis(100));
 
-                // Resend the request - make sure to send the full request data
-                self.transport.write_frame(&Frame {
-                    id: 0,
-                    data: data.clone(),
-                    timestamp: 0,
-                    is_extended: false,
-                    is_fd: false,
-                })?;
+                // Resend the request using ISO-TP segmentation
+                self.transport.send(&data)?;
 
                 // Add a small delay to allow the mock to process the frame
                 std::thread::sleep(std::time::Duration::from_millis(10));
             } else {
                 // Regular response
                 return Ok(UdsResponse {
-                    service_id: response.data[0],
-                    data: response.data[1..].to_vec(),
+                    service_id: response_data[0],
+                    data: response_data[1..].to_vec(),
                 });
             }
         }

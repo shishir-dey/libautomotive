@@ -1,7 +1,7 @@
 use super::ApplicationLayer;
 use crate::error::{AutomotiveError, Result};
-use crate::transport::TransportLayer;
-use crate::types::{Config, Frame};
+use crate::transport::IsoTpTransport;
+use crate::types::Config;
 
 // OBD-II Service IDs
 pub const SID_SHOW_CURRENT_DATA: u8 = 0x01;
@@ -292,13 +292,13 @@ impl PidData {
 }
 
 /// OBD-II Implementation
-pub struct Obd<T: TransportLayer> {
+pub struct Obd<T: IsoTpTransport> {
     config: ObdConfig,
     transport: T,
     is_open: bool,
 }
 
-impl<T: TransportLayer> Obd<T> {
+impl<T: IsoTpTransport> Obd<T> {
     /// Creates a new OBD-II instance with the given transport layer
     pub fn with_transport(config: ObdConfig, transport: T) -> Self {
         Self {
@@ -494,7 +494,7 @@ impl<T: TransportLayer> Obd<T> {
     }
 }
 
-impl<T: TransportLayer> ApplicationLayer for Obd<T> {
+impl<T: IsoTpTransport> ApplicationLayer for Obd<T> {
     type Config = ObdConfig;
     type Request = ObdRequest;
     type Response = ObdResponse;
@@ -522,21 +522,19 @@ impl<T: TransportLayer> ApplicationLayer for Obd<T> {
             return Err(AutomotiveError::NotInitialized);
         }
         let data = vec![request.mode, request.pid];
-        self.transport.write_frame(&Frame {
-            id: 0,
-            data,
-            timestamp: 0,
-            is_extended: false,
-            is_fd: false,
-        })?;
-        let response = self.transport.read_frame()?;
-        if response.data.len() < 2 {
+
+        // Send the request using ISO-TP segmentation
+        self.transport.send(&data)?;
+
+        // Receive response using ISO-TP reassembly
+        let response_data = self.transport.receive()?;
+        if response_data.len() < 2 {
             return Err(AutomotiveError::InvalidParameter);
         }
         Ok(ObdResponse {
-            mode: response.data[0],
-            pid: response.data[1],
-            data: response.data[2..].to_vec(),
+            mode: response_data[0],
+            pid: response_data[1],
+            data: response_data[2..].to_vec(),
         })
     }
 
