@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::TransportLayer;
 use crate::error::{AutomotiveError, Result};
 use crate::physical::PhysicalLayer;
@@ -42,6 +44,9 @@ impl Default for IsoTpTiming {
 pub struct IsoTpConfig {
     pub tx_id: u32,
     pub rx_id: u32,
+    /// false: 11bit mode standard can id
+    /// true: 29 bit mode extended can id
+    pub extended_can_id: bool,
     pub block_size: u8,
     pub st_min: u8,
     pub address_mode: AddressMode,
@@ -63,6 +68,7 @@ impl Default for IsoTpConfig {
         Self {
             tx_id: 0,
             rx_id: 0,
+            extended_can_id: false,
             block_size: 0,
             st_min: 0,
             address_mode: AddressMode::Normal,
@@ -80,6 +86,23 @@ pub struct IsoTp<P: PhysicalLayer> {
     config: IsoTpConfig,
     physical: P,
     is_open: bool,
+}
+
+fn separation_time(st_bits: u8) -> Result<Duration> {
+    match st_bits {
+        0..=0x7F => {
+            Ok(Duration::from_millis(st_bits as u64))
+        },
+        0x80..=0xF0 => { // Reserved range
+            Err(AutomotiveError::InvalidParameter)
+        }
+        0xF1..=0xF9 => {
+            Ok(Duration::from_micros((st_bits as u64 - 0xF0) * 100))
+        }
+        0xFA..=0xFF => { // Reserved range
+            Err(AutomotiveError::InvalidParameter)
+        }
+    }
 }
 
 impl<P: PhysicalLayer> IsoTp<P> {
@@ -110,7 +133,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
                 frame_data.push(self.config.padding_value);
             }
         }
-
+        //println!("Sending single frame: {frame_data:02X?}");
         self.write_frame(&Frame {
             id: if self.config.address_mode == AddressMode::Mixed {
                 self.config.tx_id | (self.config.address_extension as u32)
@@ -119,7 +142,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
             },
             data: frame_data,
             timestamp: 0,
-            is_extended: false,
+            is_extended: self.config.extended_can_id,
             is_fd: false,
         })
     }
@@ -153,6 +176,8 @@ impl<P: PhysicalLayer> IsoTp<P> {
             }
         }
 
+        //println!("Sending FF frame: {frame_data:02X?}");
+
         // Send first frame
         self.write_frame(&Frame {
             id: if self.config.address_mode == AddressMode::Mixed {
@@ -162,103 +187,109 @@ impl<P: PhysicalLayer> IsoTp<P> {
             },
             data: frame_data,
             timestamp: 0,
-            is_extended: false,
+            is_extended: self.config.extended_can_id,
             is_fd: false,
         })?;
 
         // Wait for flow control
         let start_time = std::time::SystemTime::now();
-        loop {
-            let frame = self.read_frame()?;
-            // Check for invalid response (negative response or invalid format)
-            if !frame.data.is_empty() && frame.data[0] == 0x7F {
-                return Err(AutomotiveError::InvalidParameter);
-            }
-            if frame.data[0] == 0x30 {
-                break;
-            }
-            if start_time.elapsed().unwrap().as_millis() as u32 > self.config.timing.n_bs {
-                return Err(AutomotiveError::Timeout);
-            }
-        }
-
-        // Consecutive frames
         let mut index = first_data_size;
+
+        // frame index
         let mut sequence = 1;
 
-        // For test_isotp_multi_frame, we need at least 3 frames total (1 first frame + 2 consecutive frames)
-        // For test_isotp_flow_control, we need at least 8 frames total
-        let min_consecutive_frames = 10; // This will ensure more than 8 total frames (1 first frame + 10 consecutive)
-        let mut consecutive_frame_count = 0;
-
-        while index < data.len() || consecutive_frame_count < min_consecutive_frames {
-            let remaining = if index < data.len() {
-                data.len() - index
-            } else {
-                0
-            };
-            let chunk_size = if self.config.address_mode == AddressMode::Extended {
-                remaining.min(6)
-            } else {
-                remaining.min(7)
-            };
-
-            let mut frame_data = vec![];
-
-            // Add address extension if needed
-            if self.config.address_mode == AddressMode::Extended {
-                frame_data.push(self.config.address_extension);
-            }
-
-            // Add PCI and data
-            frame_data.push(0x20 | (sequence & 0x0F));
-
-            // Add actual data if available, otherwise add padding
-            if index < data.len() {
-                frame_data.extend_from_slice(&data[index..index + chunk_size]);
-            } else {
-                // Add dummy data to meet the frame count requirements
-                for _ in 0..chunk_size {
-                    frame_data.push(0x00);
+        loop {
+            let fc_frame = loop {
+                let frame = self.read_frame()?;
+                //println!("FC frame received: {frame:02X?}");
+                // Check for invalid response (negative response or invalid format)
+                if !frame.data.is_empty() && frame.data[0] == 0x7F {
+                    return Err(AutomotiveError::InvalidParameter);
                 }
-            }
-
-            // Add padding if configured
-            if self.config.use_padding {
-                while frame_data.len() < 8 {
-                    frame_data.push(self.config.padding_value);
+                if frame.data[0] == 0x30 {
+                    break frame;
                 }
-            }
+                if start_time.elapsed().unwrap().as_millis() as u32 > self.config.timing.n_bs {
+                    return Err(AutomotiveError::Timeout);
+                }
+            };
 
-            // Send consecutive frame
-            self.write_frame(&Frame {
-                id: if self.config.address_mode == AddressMode::Mixed {
-                    self.config.tx_id | (self.config.address_extension as u32)
+            // For test_isotp_multi_frame, we need at least 3 frames total (1 first frame + 2 consecutive frames)
+            // For test_isotp_flow_control, we need at least 8 frames total
+            let mut consecutive_frame_count = 0;
+
+            let max_consecutive_frames = fc_frame.data[1];
+            let st_bits = fc_frame.data[2];
+
+            while index < data.len() && consecutive_frame_count < max_consecutive_frames {
+                let remaining = if index < data.len() {
+                    data.len() - index
                 } else {
-                    self.config.tx_id
-                },
-                data: frame_data,
-                timestamp: 0,
-                is_extended: false,
-                is_fd: false,
-            })?;
+                    0
+                };
+                let chunk_size = if self.config.address_mode == AddressMode::Extended {
+                    remaining.min(6)
+                } else {
+                    remaining.min(7)
+                };
 
-            if index < data.len() {
-                index += chunk_size;
+                let mut frame_data = vec![];
+
+                // Add address extension if needed
+                if self.config.address_mode == AddressMode::Extended {
+                    frame_data.push(self.config.address_extension);
+                }
+
+                // Add PCI and data
+                frame_data.push(0x20 | (sequence & 0x0F));
+
+                // Add actual data if available, otherwise add padding
+                if index < data.len() {
+                    frame_data.extend_from_slice(&data[index..index + chunk_size]);
+                } else {
+                    // Add dummy data to meet the frame count requirements
+                    for _ in 0..chunk_size {
+                        frame_data.push(0x00);
+                    }
+                }
+
+                // Add padding if configured
+                if self.config.use_padding {
+                    while frame_data.len() < 8 {
+                        frame_data.push(self.config.padding_value);
+                    }
+                }
+
+                //println!("Sending CF frame: {frame_data:02X?}");
+
+                // Send consecutive frame
+                self.write_frame(&Frame {
+                    id: if self.config.address_mode == AddressMode::Mixed {
+                        self.config.tx_id | (self.config.address_extension as u32)
+                    } else {
+                        self.config.tx_id
+                    },
+                    data: frame_data,
+                    timestamp: 0,
+                    is_extended: self.config.extended_can_id,
+                    is_fd: false,
+                })?;
+
+                if index < data.len() {
+                    index += chunk_size;
+                }
+                sequence = (sequence + 1) & 0x0F;
+                consecutive_frame_count += 1;
+
+                // If we've sent enough frames and processed all data, we can exit
+                if index >= data.len() {
+                    return Ok(());
+                }
+
+                // Add a small delay to allow the mock to process the frame
+                std::thread::sleep(separation_time(st_bits)?);
             }
-            sequence = (sequence + 1) & 0x0F;
-            consecutive_frame_count += 1;
-
-            // If we've sent enough frames and processed all data, we can exit
-            if consecutive_frame_count >= min_consecutive_frames && index >= data.len() {
-                break;
-            }
-
-            // Add a small delay to allow the mock to process the frame
-            std::thread::sleep(std::time::Duration::from_millis(10));
         }
-
-        Ok(())
     }
 
     fn receive_single_frame(&mut self, frame: &Frame) -> Result<Vec<u8>> {
@@ -300,7 +331,7 @@ impl<P: PhysicalLayer> IsoTp<P> {
             },
             data: fc_data,
             timestamp: 0,
-            is_extended: false,
+            is_extended: self.config.extended_can_id,
             is_fd: false,
         })?;
 
